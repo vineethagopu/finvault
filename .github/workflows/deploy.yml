@@ -1,0 +1,49 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: production
+        type: choice
+        options: [production, staging]
+
+jobs:
+  deploy:
+    name: Deploy – ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/policynext
+
+            # Pull latest images
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            docker compose pull backend frontend
+
+            # Zero-downtime: run migrations before swapping containers
+            docker compose run --rm migrate
+
+            # Swap containers
+            docker compose up -d --no-deps backend frontend nginx
+
+            # Prune old images
+            docker image prune -f
+
+            echo "Deployed ${{ github.sha }} to ${{ inputs.environment }}"

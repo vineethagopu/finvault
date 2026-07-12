@@ -1,0 +1,319 @@
+import React, { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { Plus, Shield, Search, Filter, MoreVertical, ChevronRight, Bell, ShoppingBag, Download, Eye, Trash2 } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { StatusBadge } from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { formatCurrency, formatDate, daysFromNow } from '@/utils/formatters'
+import { INSURANCE_TYPES } from '@/constants'
+
+const MOCK_POLICIES = [
+  {
+    id: '1', policyName: 'Term Life Insurance', insuranceType: 'LIFE', insuranceProvider: 'HDFC Life', policyNumber: '1234 5678 9012',
+    sumInsured: 10000000, annualPremium: 12000, status: 'ACTIVE', nextPremiumDueDate: '2025-05-25', policyStartDate: '2025-05-25', policyEndDate: '2045-05-24',
+    planType: 'Term Plan'
+  },
+  {
+    id: '2', policyName: 'Car Insurance', insuranceType: 'VEHICLE', insuranceProvider: 'Bajaj Allianz', policyNumber: '9876 5432 1098',
+    sumInsured: 750000, annualPremium: 6500, status: 'ACTIVE', nextPremiumDueDate: '2025-08-15', policyStartDate: '2025-05-30', policyEndDate: '2026-05-29',
+    planType: 'Comprehensive'
+  },
+  {
+    id: '3', policyName: 'Annual Travel Insurance', insuranceType: 'TRAVEL', insuranceProvider: 'ICICI Lombard', policyNumber: '5566 7788 1122',
+    sumInsured: 500000, annualPremium: 2000, status: 'ACTIVE', nextPremiumDueDate: '2026-03-12', policyStartDate: '2025-06-02', policyEndDate: '2026-06-01',
+    planType: 'Annual Multi-Trip'
+  },
+  {
+    id: '4', policyName: 'Health Insurance', insuranceType: 'HEALTH', insuranceProvider: 'Star Health Insurance', policyNumber: '4455 6677 8899',
+    sumInsured: 3750000, annualPremium: 3500, status: 'ACTIVE', nextPremiumDueDate: '2025-12-01', policyStartDate: '2025-05-30', policyEndDate: '2026-05-29',
+    planType: 'Family Floater'
+  },
+]
+
+const TABS = ['My Policies', 'Policy Applications', 'Riders', 'Claims']
+
+const INSURER_COLORS: Record<string, string> = {
+  'HDFC Life': '#dc2626', 'Bajaj Allianz': '#1d4ed8', 'ICICI Lombard': '#7c3aed', 'Star Health Insurance': '#d97706'
+}
+
+export function InsurancePage() {
+  const [activeTab, setActiveTab] = useState('My Policies')
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const navigate = useNavigate()
+
+  const filtered = MOCK_POLICIES.filter(p => {
+    const matchSearch = !search || p.policyName.toLowerCase().includes(search.toLowerCase()) || p.insuranceProvider.toLowerCase().includes(search.toLowerCase())
+    const matchType = !typeFilter || p.insuranceType === typeFilter
+    const matchStatus = !statusFilter || p.status === statusFilter
+    return matchSearch && matchType && matchStatus
+  })
+
+  const totalSumAssured = filtered.reduce((s, p) => s + p.sumInsured, 0)
+  const totalPremium = filtered.reduce((s, p) => s + p.annualPremium, 0)
+  const expiringCount = filtered.filter(p => daysFromNow(p.nextPremiumDueDate) <= 30).length
+
+  return (
+    <div className="p-4 sm:p-6 space-y-5 max-w-[1600px] mx-auto">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Insurance</h1>
+            <p className="text-sm text-slate-500 mt-0.5">View and manage all your insurance policies in one place.</p>
+          </div>
+          <div className="hidden sm:flex flex-col items-end gap-1 text-xs text-slate-500">
+            <span>Last login: 18 May 2025, 11:25 AM</span>
+            <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded-full font-medium">
+              <Shield size={10} /> Secure Session
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card padding="sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
+              <Shield size={18} className="text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Total Policies</p>
+              <p className="text-xl font-bold text-slate-900">{filtered.length}</p>
+              <p className="text-[11px] text-green-600 font-medium">Active Policies</p>
+            </div>
+          </div>
+        </Card>
+        <Card padding="sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center shrink-0">
+              <span className="text-lg">🛡️</span>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Total Sum Assured</p>
+              <p className="text-xl font-bold text-slate-900">{formatCurrency(totalSumAssured)}</p>
+              <p className="text-[11px] text-slate-400">Across all policies</p>
+            </div>
+          </div>
+        </Card>
+        <Card padding="sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center shrink-0">
+              <span className="text-lg">💰</span>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Total Annual Premium</p>
+              <p className="text-xl font-bold text-slate-900">{formatCurrency(totalPremium)}</p>
+              <p className="text-[11px] text-orange-600 font-medium">Next Due: 25 May 2025</p>
+            </div>
+          </div>
+        </Card>
+        <Card padding="sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center shrink-0">
+              <span className="text-lg">📅</span>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Policies Expiring Soon</p>
+              <p className="text-xl font-bold text-slate-900">{expiringCount}</p>
+              <p className="text-[11px] text-yellow-600 font-medium">In next 30 days</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Main card */}
+      <Card padding="none">
+        {/* Tabs */}
+        <div className="flex border-b border-slate-100 px-4 pt-1 gap-0">
+          {TABS.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab ? 'border-green-600 text-green-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div className="p-4 flex flex-wrap items-center gap-3 border-b border-slate-50">
+          <div className="flex-1 min-w-0 max-w-xs">
+            <Input
+              placeholder="Search by policy name or provider"
+              leftIcon={<Search size={14} />}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-9 text-xs"
+            />
+          </div>
+          <select
+            className="h-9 text-xs border border-slate-200 rounded-lg px-3 bg-white text-slate-700 focus:border-green-500 focus:ring-1 focus:ring-green-100"
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+          >
+            <option value="">All Policy Types</option>
+            {INSURANCE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <select
+            className="h-9 text-xs border border-slate-200 rounded-lg px-3 bg-white text-slate-700 focus:border-green-500 focus:ring-1 focus:ring-green-100"
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Status</option>
+            {['ACTIVE', 'LAPSED', 'EXPIRED', 'PENDING'].map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" size="sm" leftIcon={<Plus size={14} />} onClick={() => navigate('/app/insurance/add')}>
+              Add My Policy Manually
+            </Button>
+            <Button size="sm" leftIcon={<ShoppingBag size={14} />} onClick={() => navigate('/app/invest-online')}>
+              Buy New Policy
+            </Button>
+          </div>
+        </div>
+
+        {/* Quick Actions sidebar shown inline */}
+        <div className="flex gap-0">
+          <div className="flex-1 overflow-x-auto">
+            {/* Policy list */}
+            <div className="p-4">
+              <p className="text-sm font-semibold text-slate-700 mb-3">My Policies ({filtered.length})</p>
+              {filtered.length === 0 ? (
+                <EmptyState
+                  icon={<Shield size={28} />}
+                  title="No policies found"
+                  description="Add your first insurance policy to get started"
+                  action={{ label: 'Add Policy', onClick: () => navigate('/app/insurance/add'), icon: <Plus size={14} /> }}
+                />
+              ) : (
+                <div className="space-y-3">
+                  {filtered.map((policy) => {
+                    const typeInfo = INSURANCE_TYPES.find(t => t.value === policy.insuranceType)
+                    const days = daysFromNow(policy.nextPremiumDueDate)
+                    const isDueSoon = days <= 30
+                    return (
+                      <div
+                        key={policy.id}
+                        className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:border-green-200 hover:bg-green-50/30 transition-all cursor-pointer group"
+                        onClick={() => navigate(`/app/insurance/${policy.id}`)}
+                      >
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-xl"
+                          style={{ backgroundColor: typeInfo?.color + '20' }}>
+                          {typeInfo?.icon || '📋'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{policy.policyName}</p>
+                              <p className="text-xs text-slate-500">{policy.insuranceProvider}</p>
+                              <p className="text-xs text-slate-400">Policy No: {policy.policyNumber}</p>
+                            </div>
+                            <StatusBadge status={policy.status} />
+                          </div>
+                        </div>
+                        <div className="hidden sm:flex flex-col items-end gap-1 min-w-[120px]">
+                          <p className="text-[10px] text-slate-400 uppercase">Sum Insured</p>
+                          <p className="text-sm font-bold text-slate-800">{formatCurrency(policy.sumInsured)}</p>
+                        </div>
+                        <div className="hidden md:flex flex-col items-end gap-1 min-w-[100px]">
+                          <p className="text-[10px] text-slate-400 uppercase">Annual Premium</p>
+                          <p className="text-sm font-bold text-slate-800">{formatCurrency(policy.annualPremium)}</p>
+                        </div>
+                        <div className="hidden lg:flex flex-col items-end gap-1 min-w-[120px]">
+                          <p className="text-[10px] text-slate-400 uppercase">Next Due</p>
+                          <p className={`text-sm font-semibold ${isDueSoon ? 'text-orange-600' : 'text-slate-700'}`}>
+                            {formatDate(policy.nextPremiumDueDate)}
+                          </p>
+                          {isDueSoon && <p className="text-[10px] text-orange-500">(In {days} days)</p>}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <ChevronRight size={16} className="text-slate-300 group-hover:text-green-600 transition-colors" />
+                          <div className="relative">
+                            <button
+                              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                              onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === policy.id ? null : policy.id) }}
+                            >
+                              <MoreVertical size={15} className="text-slate-400" />
+                            </button>
+                            {menuOpen === policy.id && (
+                              <div className="absolute right-0 top-8 bg-white border border-slate-100 rounded-xl shadow-lg py-1 z-10 w-44" onClick={e => e.stopPropagation()}>
+                                <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                  <Eye size={13} /> View Details
+                                </button>
+                                <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                  <Download size={13} /> Download Policy
+                                </button>
+                                <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                  <Bell size={13} /> Set Reminder
+                                </button>
+                                <div className="border-t border-slate-100 mt-1">
+                                  <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
+                                    <Trash2 size={13} /> Delete
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Actions panel */}
+          <div className="hidden xl:block w-64 border-l border-slate-100 p-4 space-y-4 shrink-0">
+            <div>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Quick Actions</h4>
+              {[
+                { icon: ShoppingBag, label: 'Buy New Policy', desc: 'Explore and buy new insurance' },
+                { icon: Plus, label: 'Add My Policy Manually', desc: 'Add a policy you already have' },
+                { icon: Shield, label: 'Renew Policy', desc: 'Renew your existing policy' },
+                { icon: Download, label: 'Download Policy Schedule', desc: 'Get your policy document' },
+              ].map(({ icon: Icon, label, desc }) => (
+                <button key={label} className="w-full flex items-start gap-3 p-3 hover:bg-slate-50 rounded-xl text-left transition-colors mb-1">
+                  <Icon size={15} className="text-green-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-700">{label}</p>
+                    <p className="text-[10px] text-slate-400">{desc}</p>
+                  </div>
+                  <ChevronRight size={12} className="text-slate-300 ml-auto mt-0.5 shrink-0" />
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-slate-100 pt-3">
+              <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Need Help?</h4>
+              <p className="text-xs text-slate-500 mb-2">Our support team is here to help you with your insurance needs.</p>
+              <Button variant="outline" size="sm" className="w-full text-xs">Contact Support</Button>
+            </div>
+            <div className="border-t border-slate-100 pt-3">
+              <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Useful Information</h4>
+              {['How to File a Claim', 'Understand Your Policy', 'Tax Benefits on Insurance', 'Insurance Glossary'].map(item => (
+                <button key={item} className="w-full flex items-center justify-between py-2 text-xs text-slate-600 hover:text-green-600 transition-colors">
+                  {item} <ChevronRight size={12} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-3 border-t border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-green-700">
+            <Shield size={12} /> Stay protected! Ensure timely premium payments to keep your policies active.
+          </div>
+          <Button variant="ghost" size="sm" className="text-xs" leftIcon={<Bell size={12} />}>Set Payment Reminder</Button>
+        </div>
+      </Card>
+    </div>
+  )
+}

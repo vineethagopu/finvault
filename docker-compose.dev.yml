@@ -1,0 +1,52 @@
+version: '3.9'
+
+# Local dev override — no SSL, hot reload mounts, exposed ports
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    networks:
+      - internal
+
+  redis:
+    ports:
+      - "6379:6379"
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+      target: builder
+    command: npm run start:dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-policynext}:${POSTGRES_PASSWORD:-dev_password}@postgres:5432/${POSTGRES_DB:-policynext}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dev_redis}@redis:6379
+      JWT_ACCESS_SECRET: dev-access-secret-change-in-prod
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-prod
+      JWT_ACCESS_EXPIRES_IN: 15m
+      CORS_ORIGIN: http://localhost:5173
+      ENCRYPTION_KEY: dev-encryption-key-32-chars-here
+      UPLOAD_DIR: /app/uploads
+      PORT: 3000
+    volumes:
+      - ./backend/src:/app/src:delegated
+      - ./backend/prisma:/app/prisma:delegated
+      - uploads_dev:/app/uploads
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+volumes:
+  uploads_dev:
+
+networks:
+  internal:
+    driver: bridge

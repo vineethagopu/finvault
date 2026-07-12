@@ -1,0 +1,508 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum PlanType {
+  INDIVIDUAL
+  FAMILY
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPPORT
+}
+
+enum OtpType {
+  EMAIL
+  MOBILE
+  TWO_FA
+}
+
+enum InsuranceType {
+  LIFE
+  HEALTH
+  VEHICLE
+  TRAVEL
+  HOME
+  FIRE
+  MARINE
+  CROP
+  OTHER
+}
+
+enum PolicyStatus {
+  ACTIVE
+  EXPIRED
+  LAPSED
+  CANCELLED
+  PENDING
+  CLAIMED
+}
+
+enum InvestmentType {
+  MUTUAL_FUND
+  STOCKS
+  FIXED_DEPOSIT
+  BONDS
+  GOLD_ETF
+  ULIP
+  PPF
+  NPS
+  REAL_ESTATE
+  OTHER
+}
+
+enum AssetClass {
+  EQUITY
+  DEBT
+  HYBRID
+  COMMODITY
+  REAL_ESTATE
+  OTHER
+}
+
+enum LoanType {
+  HOME_LOAN
+  CAR_LOAN
+  PERSONAL_LOAN
+  EDUCATION_LOAN
+  BUSINESS_LOAN
+  GOLD_LOAN
+  OTHER
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+  OVERDUE
+  SETTLED
+}
+
+enum DocumentCategory {
+  INSURANCE
+  INVESTMENT
+  LOAN
+  KYC
+  INCOME
+  TAX
+  OTHER
+}
+
+enum BeneficiaryType {
+  NOMINEE
+  LEGAL_HEIR
+  ASSIGNEE
+}
+
+enum PremiumStatus {
+  UPCOMING
+  PAID
+  OVERDUE
+  MISSED
+}
+
+enum NotificationType {
+  ALERT
+  INFO
+  SUCCESS
+  INVESTMENT
+  SYSTEM
+}
+
+enum AlertCategory {
+  INSURANCE
+  INVESTMENT
+  LOAN
+  ACCOUNT
+  SYSTEM
+}
+
+// ─────────────────────────────────────────────
+// USER & AUTH
+// ─────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(cuid())
+  username       String    @unique
+  email          String    @unique
+  mobile         String    @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  dateOfBirth    DateTime?
+  address        String?
+  occupation     String?
+  annualIncome   Decimal?  @db.Decimal(15, 2)
+  role           UserRole  @default(USER)
+  planType       PlanType  @default(INDIVIDUAL)
+  emailVerified  Boolean   @default(false)
+  mobileVerified Boolean   @default(false)
+  twoFAEnabled   Boolean   @default(false)
+  twoFASecret    String?
+  avatarUrl      String?
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  lastLoginIp    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  familyMemberships FamilyMembership[]
+  sessions          Session[]
+  otps              Otp[]
+  policies          Policy[]
+  investments       Investment[]
+  loans             Loan[]
+  documents         Document[]
+  beneficiaries     Beneficiary[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+
+  @@index([email])
+  @@index([username])
+  @@index([mobile])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  userAgent    String?
+  isRevoked    Boolean  @default(false)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model Otp {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       OtpType
+  code       String
+  identifier String
+  isUsed     Boolean  @default(false)
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([identifier, type])
+}
+
+// ─────────────────────────────────────────────
+// FAMILY
+// ─────────────────────────────────────────────
+
+model Family {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members   FamilyMembership[]
+}
+
+model FamilyMembership {
+  id           String   @id @default(cuid())
+  familyId     String
+  family       Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         String   @default("MEMBER")
+  relationship String?
+  joinedAt     DateTime @default(now())
+
+  @@unique([familyId, userId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// INSURANCE POLICIES
+// ─────────────────────────────────────────────
+
+model Policy {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policyName       String
+  policyNumber     String?
+  insuranceType    InsuranceType
+  provider         String
+  sumAssured       Decimal       @db.Decimal(15, 2)
+  premiumAmount    Decimal       @db.Decimal(10, 2)
+  premiumFrequency String        @default("ANNUAL")
+  policyStartDate  DateTime
+  policyEndDate    DateTime
+  nextPremiumDate  DateTime?
+  status           PolicyStatus  @default(ACTIVE)
+  policyTerm       Int?
+  agentName        String?
+  agentContact     String?
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  nominees        Nominee[]
+  policyDocuments PolicyDocument[]
+  premiumPayments PremiumPayment[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([nextPremiumDate])
+}
+
+model Nominee {
+  id           String    @id @default(cuid())
+  policyId     String
+  policy       Policy    @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  fullName     String
+  relationship String
+  dateOfBirth  DateTime?
+  sharePercent Decimal   @db.Decimal(5, 2)
+  mobile       String?
+  address      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([policyId])
+}
+
+model PremiumPayment {
+  id         String        @id @default(cuid())
+  policyId   String
+  policy     Policy        @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  dueDate    DateTime
+  paidDate   DateTime?
+  amount     Decimal       @db.Decimal(10, 2)
+  status     PremiumStatus @default(UPCOMING)
+  receiptUrl String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([policyId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────
+// INVESTMENTS
+// ─────────────────────────────────────────────
+
+model Investment {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investmentName String
+  investmentType InvestmentType
+  provider       String
+  assetClass     AssetClass     @default(EQUITY)
+  riskLevel      String         @default("MODERATE")
+  amountInvested Decimal        @db.Decimal(15, 2)
+  currentValue   Decimal        @db.Decimal(15, 2)
+  units          Decimal?       @db.Decimal(15, 4)
+  nav            Decimal?       @db.Decimal(10, 4)
+  folioNumber    String?
+  investmentDate DateTime
+  maturityDate   DateTime?
+  returnPercent  Decimal?       @db.Decimal(8, 2)
+  returnAmount   Decimal?       @db.Decimal(15, 2)
+  sipAmount      Decimal?       @db.Decimal(10, 2)
+  sipDay         Int?
+  isSip          Boolean        @default(false)
+  status         String         @default("ACTIVE")
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([userId, investmentType])
+}
+
+// ─────────────────────────────────────────────
+// LOANS
+// ─────────────────────────────────────────────
+
+model Loan {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loanName          String
+  loanType          LoanType
+  lender            String
+  accountNumber     String?
+  principalAmount   Decimal    @db.Decimal(15, 2)
+  outstandingAmount Decimal    @db.Decimal(15, 2)
+  emiAmount         Decimal    @db.Decimal(10, 2)
+  interestRate      Decimal    @db.Decimal(5, 2)
+  tenure            Int
+  remainingTenure   Int
+  emiDay            Int
+  nextEmiDate       DateTime?
+  disbursedDate     DateTime
+  maturityDate      DateTime
+  purpose           String?
+  status            LoanStatus @default(ACTIVE)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  loanDocuments LoanDocument[]
+  emiPayments   EmiPayment[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([nextEmiDate])
+}
+
+model EmiPayment {
+  id        String        @id @default(cuid())
+  loanId    String
+  loan      Loan          @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  dueDate   DateTime
+  paidDate  DateTime?
+  amount    Decimal       @db.Decimal(10, 2)
+  principal Decimal?      @db.Decimal(10, 2)
+  interest  Decimal?      @db.Decimal(10, 2)
+  status    PremiumStatus @default(UPCOMING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([loanId])
+  @@index([dueDate])
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENTS
+// ─────────────────────────────────────────────
+
+model Document {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  fileName    String
+  mimeType    String
+  size        Int
+  s3Key       String
+  s3Bucket    String
+  category    DocumentCategory @default(OTHER)
+  tags        String[]
+  linkedType  String?
+  linkedId    String?
+  isEncrypted Boolean          @default(true)
+  scanStatus  String           @default("PENDING")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  policyDocuments PolicyDocument[]
+  loanDocuments   LoanDocument[]
+
+  @@index([userId])
+  @@index([userId, category])
+}
+
+model PolicyDocument {
+  policyId   String
+  policy     Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  docType    String?
+  createdAt  DateTime @default(now())
+
+  @@id([policyId, documentId])
+}
+
+model LoanDocument {
+  loanId     String
+  loan       Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  docType    String?
+  createdAt  DateTime @default(now())
+
+  @@id([loanId, documentId])
+}
+
+// ─────────────────────────────────────────────
+// BENEFICIARIES
+// ─────────────────────────────────────────────
+
+model Beneficiary {
+  id            String          @id @default(cuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName      String
+  relationship  String
+  dateOfBirth   DateTime?
+  mobile        String?
+  email         String?
+  address       String?
+  sharePercent  Decimal         @db.Decimal(5, 2)
+  aadhaarNumber String?
+  type          BeneficiaryType @default(NOMINEE)
+  isVerified    Boolean         @default(false)
+  kycVerifiedAt DateTime?
+  aadhaarLinked Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType @default(INFO)
+  category  AlertCategory    @default(ACCOUNT)
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  data      Json?
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String?
+  entityId  String?
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
