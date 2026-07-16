@@ -5,24 +5,21 @@ export const documentService = {
   getAll: (params?: PaginationParams & { category?: string }) =>
     api.get<ApiResponse<Document[]>>('/documents', { params }),
 
-  getById: (id: string) =>
-    api.get<ApiResponse<Document>>(`/documents/${id}`),
-
-  upload: (file: File, metadata: { category: string; documentType: string; linkedTo?: string; notes?: string }) => {
+  upload: (file: File, metadata: {
+    name?: string; category?: string; tags?: string
+    policyId?: string; loanId?: string; docType?: string
+  }) => {
     const form = new FormData()
     form.append('file', file)
-    Object.entries(metadata).forEach(([k, v]) => v && form.append(k, v))
+    Object.entries(metadata).forEach(([k, v]) => v && form.append(k, String(v)))
     return api.post<ApiResponse<Document>>('/documents/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
 
-  getSignedUrl: (id: string) =>
-    api.get<{ url: string }>(`/documents/${id}/signed-url`),
+  download: (id: string) =>
+    api.get(`/documents/${id}/download`, { responseType: 'blob' }),
 
   delete: (id: string) =>
     api.delete(`/documents/${id}`),
-
-  getCategories: () =>
-    api.get('/documents/categories'),
 }

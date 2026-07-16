@@ -61,4 +61,101 @@ export class LoansService {
     if (!loan) throw new ForbiddenException('Access denied')
     return loan
   }
+
+  /**
+   * Simplified, documented placeholder formula — not fed by any real insurer
+   * surrender-value feed. Per active LIFE policy: eligibility = 80% of sumAssured;
+   * outstanding = sum of outstandingAmount on active loans secured by that policy.
+   */
+  async getEligibility(userId: string) {
+    const [lifePolicies, securedLoans] = await this.prisma.$transaction([
+      this.prisma.policy.findMany({
+        where: { userId, insuranceType: 'LIFE', status: 'ACTIVE' },
+        select: { id: true, policyName: true, policyNumber: true, sumAssured: true },
+      }),
+      this.prisma.loan.findMany({
+        where: { userId, securedByPolicyId: { not: null }, status: { in: ['ACTIVE', 'OVERDUE'] } },
+        select: { securedByPolicyId: true, outstandingAmount: true },
+      }),
+    ])
+
+    const outstandingByPolicy = new Map<string, number>()
+    for (const loan of securedLoans) {
+      if (!loan.securedByPolicyId) continue
+      outstandingByPolicy.set(
+        loan.securedByPolicyId,
+        (outstandingByPolicy.get(loan.securedByPolicyId) ?? 0) + Number(loan.outstandingAmount),
+      )
+    }
+
+    const byPolicy = lifePolicies.map((p) => {
+      const eligibility = Number(p.sumAssured) * 0.8
+      const outstanding = outstandingByPolicy.get(p.id) ?? 0
+      return {
+        policyId: p.id,
+        policyName: p.policyName,
+        policyNumber: p.policyNumber,
+        sumAssured: Number(p.sumAssured),
+        eligibility,
+        eligibilityPct: 80,
+        outstanding,
+        available: Math.max(0, eligibility - outstanding),
+      }
+    })
+
+    const totalEligibility = byPolicy.reduce((s, p) => s + p.eligibility, 0)
+    const totalOutstanding = byPolicy.reduce((s, p) => s + p.outstanding, 0)
+    const totalAvailable = Math.max(0, totalEligibility - totalOutstanding)
+
+    return {
+      data: {
+        totalEligibility,
+        totalOutstanding,
+        totalAvailable,
+        availablePercent: totalEligibility > 0 ? Math.round((totalAvailable / totalEligibility) * 100) : 0,
+        utilizedPercent: totalEligibility > 0 ? Math.round((totalOutstanding / totalEligibility) * 100) : 0,
+        activeAccounts: securedLoans.length,
+        byPolicy,
+      },
+    }
+  }
+
+  async getDocuments(userId: string, loanId: string) {
+    await this.assertOwnership(userId, loanId)
+    const links = await this.prisma.loanDocument.findMany({
+      where: { loanId },
+      include: { document: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    return { data: links }
+  }
+
+  /** No dedicated transaction ledger — derived from real EmiPayment rows plus a
+   * synthetic "Loan Disbursal" entry from the loan's own disbursedDate/principal. */
+  async getTransactions(userId: string, loanId: string) {
+    const loan = await this.assertOwnership(userId, loanId)
+    const payments = await this.prisma.emiPayment.findMany({
+      where: { loanId, status: 'PAID' },
+      orderBy: { paidDate: 'desc' },
+    })
+
+    const transactions = [
+      ...payments.map((p) => ({
+        id: p.id,
+        date: p.paidDate ?? p.dueDate,
+        description: `EMI Payment`,
+        amount: Number(p.amount),
+        type: 'EMI_PAYMENT',
+      })),
+      {
+        id: `${loan.id}-disbursal`,
+        date: loan.disbursedDate,
+        description: 'Loan Disbursal',
+        amount: Number(loan.principalAmount),
+        type: 'DISBURSAL',
+      },
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+    return { data: transactions }
+  }
 }

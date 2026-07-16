@@ -46,152 +46,192 @@ export interface RegisterData {
   agreedToTerms: boolean
 }
 
-// ─── Policy / Insurance ──────────────────────────────────────────────────────
-export type InsuranceType =
-  | 'LIFE' | 'HEALTH' | 'VEHICLE' | 'TRAVEL' | 'HOME' | 'PET' | 'FIRE' | 'OTHER'
+export interface FamilyMemberData {
+  firstName: string
+  lastName: string
+  username: string
+  email: string
+  mobile: string
+  password: string
+  relationship?: string
+}
 
-export type PolicyStatus = 'ACTIVE' | 'LAPSED' | 'EXPIRED' | 'PENDING' | 'CANCELLED'
+// ─── Policy / Insurance ──────────────────────────────────────────────────────
+// These mirror backend/prisma/schema.prisma + the Nest DTOs field-for-field —
+// keep them in sync with the API response shape, not with any mock UI.
+export type InsuranceType =
+  | 'LIFE' | 'HEALTH' | 'VEHICLE' | 'TRAVEL' | 'HOME' | 'FIRE' | 'MARINE' | 'CROP' | 'OTHER'
+
+export type PolicyStatus = 'ACTIVE' | 'EXPIRED' | 'LAPSED' | 'CANCELLED' | 'PENDING' | 'CLAIMED'
+
+export interface Nominee {
+  id: string
+  policyId: string
+  fullName: string
+  relationship: string
+  dateOfBirth?: string
+  sharePercent: number
+  mobile?: string
+  email?: string
+  address?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PremiumPayment {
+  id: string
+  policyId: string
+  dueDate: string
+  paidDate?: string
+  amount: number
+  status: 'UPCOMING' | 'PAID' | 'OVERDUE' | 'MISSED'
+  receiptUrl?: string
+}
 
 export interface Policy {
   id: string
   policyName: string
-  policyNumber: string
+  policyNumber?: string
+  planName?: string
   insuranceType: InsuranceType
-  insuranceProvider: string
-  providerLogo?: string
-  planType: string
-  sumInsured: number
-  annualPremium: number
-  paymentFrequency: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
+  provider: string
+  sumAssured: number
+  premiumAmount: number
+  premiumFrequency: string
   policyStartDate: string
   policyEndDate: string
-  policyMaturityDate?: string
-  policyTerm: number
-  premiumPaymentTerm: number
-  nextPremiumDueDate: string
+  nextPremiumDate?: string
   status: PolicyStatus
-  policyholder: string
+  policyTerm?: number
+  agentName?: string
+  agentContact?: string
   notes?: string
   createdAt: string
+  updatedAt: string
   nominees?: Nominee[]
-  documents?: Document[]
+  premiumPayments?: PremiumPayment[]
+  _count?: { policyDocuments: number }
 }
 
 export interface PolicyFilters {
-  type?: InsuranceType
+  insuranceType?: InsuranceType
   status?: PolicyStatus
-  provider?: string
   search?: string
 }
 
 // ─── Investments ─────────────────────────────────────────────────────────────
 export type InvestmentType =
-  | 'MUTUAL_FUND' | 'STOCKS' | 'FIXED_DEPOSIT' | 'PPF_EPF' | 'BONDS' | 'GOLD_ETF' | 'REAL_ESTATE' | 'ULIP' | 'OTHER'
+  | 'MUTUAL_FUND' | 'STOCKS' | 'FIXED_DEPOSIT' | 'BONDS' | 'GOLD_ETF' | 'ULIP' | 'PPF' | 'NPS' | 'REAL_ESTATE' | 'OTHER'
+
+export type AssetClass = 'EQUITY' | 'DEBT' | 'HYBRID' | 'COMMODITY' | 'REAL_ESTATE' | 'OTHER'
 
 export interface Investment {
   id: string
   investmentName: string
   investmentType: InvestmentType
   provider: string
-  schemeCode?: string
-  folioNumber?: string
+  assetClass: AssetClass
+  riskLevel: string
   amountInvested: number
   currentValue: number
-  returnAmount: number
-  returnPercent: number
-  status: 'ACTIVE' | 'REDEEMED' | 'MATURED'
+  units?: number
+  nav?: number
+  folioNumber?: string
   investmentDate: string
-  assetClass: string
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH'
-  lockInPeriod?: string
-  expectedReturnRate?: number
+  maturityDate?: string
+  returnPercent?: number
+  returnAmount?: number
+  sipAmount?: number
+  sipDay?: number
+  isSip: boolean
+  status: string
   notes?: string
   createdAt: string
+}
+
+export interface InvestmentSnapshot {
+  id: string
+  investmentId: string
+  value: number
+  recordedAt: string
 }
 
 // ─── Loans ───────────────────────────────────────────────────────────────────
 export type LoanType =
-  | 'HOME' | 'PERSONAL' | 'VEHICLE' | 'EDUCATION' | 'BUSINESS' | 'POLICY' | 'GOLD' | 'OTHER'
+  | 'HOME_LOAN' | 'CAR_LOAN' | 'PERSONAL_LOAN' | 'EDUCATION_LOAN' | 'BUSINESS_LOAN' | 'GOLD_LOAN' | 'POLICY_LOAN' | 'OTHER'
+
+export type LoanStatus = 'ACTIVE' | 'CLOSED' | 'OVERDUE' | 'SETTLED'
+
+export interface EmiPayment {
+  id: string
+  loanId: string
+  dueDate: string
+  paidDate?: string
+  amount: number
+  principal?: number
+  interest?: number
+  status: 'UPCOMING' | 'PAID' | 'OVERDUE' | 'MISSED'
+}
 
 export interface Loan {
   id: string
-  loanAccountNumber: string
+  loanName: string
   loanType: LoanType
-  loanProvider: string
-  loanAmount: number
+  lender: string
+  accountNumber?: string
+  securedByPolicyId?: string
+  principalAmount: number
   outstandingAmount: number
-  interestRate: number
-  interestType: 'FIXED' | 'REDUCING'
   emiAmount: number
-  emiDayOfMonth: number
-  repaymentFrequency: 'MONTHLY' | 'QUARTERLY'
-  loanStartDate: string
-  loanMaturityDate: string
-  loanTenure: number
-  totalEMIs: number
-  emisPaid: number
-  emisRemaining: number
-  nextEMIDate: string
-  status: 'ACTIVE' | 'CLOSED' | 'OVERDUE'
-  loanPurpose?: string
-  collateralType?: string
-  notes?: string
+  interestRate: number
+  tenure: number
+  remainingTenure: number
+  emiDay: number
+  nextEmiDate?: string
+  disbursedDate: string
+  maturityDate: string
+  purpose?: string
+  interestType?: string
+  repaymentFrequency?: string
+  securityType?: string
+  status: LoanStatus
   createdAt: string
+  emiPayments?: EmiPayment[]
 }
 
 // ─── Documents ───────────────────────────────────────────────────────────────
-export type DocumentCategory = 'POLICY' | 'LOAN' | 'INVESTMENT' | 'ID_PROOF' | 'ADDRESS_PROOF' | 'FINANCIAL' | 'OTHER'
-export type DocumentType = string
+export type DocumentCategory = 'INSURANCE' | 'INVESTMENT' | 'LOAN' | 'KYC' | 'INCOME' | 'TAX' | 'OTHER'
 
 export interface Document {
   id: string
-  documentName: string
+  name: string
+  mimeType: string
+  size: number
   category: DocumentCategory
-  documentType: DocumentType
-  fileUrl: string
-  fileSize: number
-  fileType: string
-  linkedTo?: string
-  uploadedOn: string
-  notes?: string
+  tags: string[]
+  scanStatus: string
+  createdAt: string
+  updatedAt: string
 }
 
 // ─── Beneficiaries ───────────────────────────────────────────────────────────
-export type BeneficiaryType = 'NOMINEE' | 'SHAREHOLDER' | 'ACCOUNT_HOLDER' | 'OTHER'
-export type Relationship =
-  | 'SPOUSE' | 'FATHER' | 'MOTHER' | 'SON' | 'DAUGHTER' | 'BROTHER' | 'SISTER' | 'FRIEND' | 'OTHER'
+export type BeneficiaryType = 'NOMINEE' | 'LEGAL_HEIR' | 'ASSIGNEE' | 'OTHER'
 
 export interface Beneficiary {
   id: string
+  policyId?: string
   fullName: string
-  relationship: Relationship
-  dateOfBirth: string
+  relationship: string
+  dateOfBirth?: string
+  mobile?: string
   email?: string
-  mobile: string
-  pan?: string
   address?: string
-  city?: string
-  pinCode?: string
-  sharePercentage: number
-  fixedAmount?: number
-  beneficiaryType: BeneficiaryType
-  guardianName?: string
-  linkedPolicy?: string
-  status: 'ACTIVE' | 'INACTIVE'
+  sharePercent: number
+  aadhaarNumber?: string
+  pan?: string
+  type: BeneficiaryType
+  isVerified: boolean
   createdAt: string
-}
-
-// ─── Nominees ────────────────────────────────────────────────────────────────
-export interface Nominee {
-  id: string
-  nomineeName: string
-  relationship: Relationship
-  dateOfBirth: string
-  sharePercentage: number
-  nomineeType: 'PRIMARY' | 'CONTINGENT'
-  guardianName?: string
-  policyId: string
-  policyName: string
 }
 
 // ─── Alerts ──────────────────────────────────────────────────────────────────

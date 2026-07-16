@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm, type UseFormRegisterReturn } from 'react-hook-form'
+import { useQuery } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'framer-motion'
@@ -12,13 +13,24 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { loanService } from '@/services/loanService'
+import { policyService } from '@/services/policyService'
+import type { Policy } from '@/types'
+import toast from 'react-hot-toast'
 
-const LOAN_TYPES = ['Home Loan', 'Personal Loan', 'Car Loan', 'Education Loan', 'Business Loan', 'Loan Against Property', 'Credit Card Loan', 'Policy Loan', 'Others']
+// Real LoanType enum values (backend/prisma/schema.prisma) — "Loan Against Property"
+// and "Credit Card Loan" have no dedicated enum value, so they map to OTHER.
+const LOAN_TYPES = [
+  { value: 'HOME_LOAN', label: 'Home Loan' }, { value: 'PERSONAL_LOAN', label: 'Personal Loan' },
+  { value: 'CAR_LOAN', label: 'Car Loan' }, { value: 'EDUCATION_LOAN', label: 'Education Loan' },
+  { value: 'BUSINESS_LOAN', label: 'Business Loan' }, { value: 'GOLD_LOAN', label: 'Gold Loan' },
+  { value: 'POLICY_LOAN', label: 'Policy Loan' }, { value: 'OTHER', label: 'Loan Against Property' },
+  { value: 'OTHER', label: 'Credit Card Loan' }, { value: 'OTHER', label: 'Others' },
+]
 const LOAN_PURPOSES = ['Home Purchase', 'Home Renovation', 'Vehicle Purchase', 'Education', 'Medical', 'Business', 'Wedding', 'Travel', 'Debt Consolidation', 'Others']
 const INTEREST_TYPES = ['Reducing Balance', 'Flat Rate', 'Fixed', 'Floating']
 const REPAYMENT_FREQUENCIES = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly']
 const SECURITY_TYPES = ['None / Unsecured', 'Property', 'Vehicle', 'Gold', 'Fixed Deposit', 'Policy Assignment', 'Others']
-const POLICIES = ['Term Life Insurance', 'Whole Life Plan', 'Endowment Plan']
 const EMI_DAYS = Array.from({ length: 28 }, (_, i) => String(i + 1))
 
 const WHY_ADD_MANUALLY = [
@@ -157,6 +169,15 @@ function PopularLoanTypes() {
 export function AddLoanPage() {
   const navigate = useNavigate()
   const [saved, setSaved] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  const { data: lifePolicies = [] } = useQuery({
+    queryKey: ['policies-life-active'],
+    queryFn: async () => {
+      const res = await policyService.getAll({ insuranceType: 'LIFE', status: 'ACTIVE' } as any)
+      return ((res.data as any).data ?? []) as Policy[]
+    },
+  })
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -166,7 +187,48 @@ export function AddLoanPage() {
     },
   })
 
-  const onSubmit = handleSubmit(() => setSaved(true))
+  const onSubmit = handleSubmit(async (data) => {
+    setSubmitting(true)
+    try {
+      const extraNotes = [
+        data.subPurpose && `Sub-purpose: ${data.subPurpose}`,
+        data.startDate && data.startDate !== data.disbursalDate && `Loan start date: ${data.startDate}`,
+        data.notes,
+      ].filter(Boolean).join(' · ')
+      const tenureMonths = data.totalEmis ? Number(data.totalEmis) : (data.tenure ? Number(data.tenure) * 12 : 12)
+      const maturityDate = new Date(data.disbursalDate)
+      maturityDate.setMonth(maturityDate.getMonth() + tenureMonths)
+
+      await loanService.create({
+        loanName: `${LOAN_TYPES.find(t => t.value === data.loanType)?.label ?? data.loanType} - ${data.provider}`,
+        loanType: data.loanType as any,
+        lender: data.provider,
+        accountNumber: data.accountNumber,
+        securedByPolicyId: data.policyAssigned || undefined,
+        principalAmount: Number(data.loanAmount),
+        outstandingAmount: Number(data.loanAmount),
+        emiAmount: data.emiAmount ? Number(data.emiAmount) : 0,
+        interestRate: Number(data.interestRate),
+        tenure: tenureMonths,
+        remainingTenure: tenureMonths,
+        emiDay: data.emiDay ? Number(data.emiDay) : 1,
+        disbursedDate: data.disbursalDate,
+        maturityDate: maturityDate.toISOString(),
+        purpose: data.purpose || undefined,
+        interestType: data.interestType || undefined,
+        repaymentFrequency: data.repaymentFrequency || undefined,
+        securityType: data.securityType || undefined,
+        notes: extraNotes || undefined,
+        status: 'ACTIVE',
+      } as any)
+      setSaved(true)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error(err.response?.data?.message || 'Failed to add loan')
+    } finally {
+      setSubmitting(false)
+    }
+  })
 
   const disbursalField = register('disbursalDate')
   const startField = register('startDate')
@@ -218,7 +280,7 @@ export function AddLoanPage() {
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <Select label="Loan Type" required {...register('loanType')} error={errors.loanType?.message}>
                     <option value="">Select Loan Type</option>
-                    {LOAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    {LOAN_TYPES.map(t => <option key={t.label} value={t.value}>{t.label}</option>)}
                   </Select>
                   <Input label="Loan Provider / Financial Institution" required placeholder="Enter Provider / Institution Name" {...register('provider')} error={errors.provider?.message} />
                   <Input label="Loan Account Number" required placeholder="Enter Loan Account Number" {...register('accountNumber')} error={errors.accountNumber?.message} />
@@ -276,7 +338,7 @@ export function AddLoanPage() {
                   </Select>
                   <Select label="Policy Assigned (If any)" {...register('policyAssigned')}>
                     <option value="">Select Policy (If Applicable)</option>
-                    {POLICIES.map(p => <option key={p} value={p}>{p}</option>)}
+                    {lifePolicies.map(p => <option key={p.id} value={p.id}>{p.policyName}</option>)}
                   </Select>
                   <Textarea label="Notes (Optional)" rows={3} placeholder="Add any notes about this loan" {...register('notes')} />
                 </div>
@@ -295,7 +357,7 @@ export function AddLoanPage() {
                 </Button>
                 <div className="flex items-center gap-3">
                   <Button type="button" variant="outline" onClick={() => navigate('/app/loans')}>Cancel</Button>
-                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500">
+                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500" loading={submitting}>
                     Save Loan
                   </Button>
                 </div>

@@ -8,19 +8,8 @@ export const policyService = {
   getById: (id: string) =>
     api.get<ApiResponse<Policy>>(`/policies/${id}`),
 
-  create: (data: Partial<Omit<Policy, 'documents'>> & { documents?: File[] }) => {
-    const form = new FormData()
-    Object.entries(data).forEach(([k, v]) => {
-      if (k === 'documents' && Array.isArray(v)) {
-        ;(v as File[]).forEach((f) => form.append('documents', f))
-      } else if (v !== undefined && v !== null) {
-        form.append(k, String(v))
-      }
-    })
-    return api.post<ApiResponse<Policy>>('/policies', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-  },
+  create: (data: Record<string, unknown>) =>
+    api.post<ApiResponse<Policy>>('/policies', data),
 
   update: (id: string, data: Partial<Policy>) =>
     api.patch<ApiResponse<Policy>>(`/policies/${id}`, data),
@@ -31,6 +20,21 @@ export const policyService = {
   getSummary: () =>
     api.get('/policies/summary'),
 
-  getDuePremiums: (month?: string) =>
-    api.get('/policies/due-premiums', { params: { month } }),
+  getAllDocuments: () =>
+    api.get('/policies/documents'),
+
+  getDocuments: (policyId: string) =>
+    api.get(`/policies/${policyId}/documents`),
+
+  getPayments: (policyId: string) =>
+    api.get(`/policies/${policyId}/payments`),
+
+  addNominee: (policyId: string, data: Record<string, unknown>) =>
+    api.post(`/policies/${policyId}/nominees`, data),
+
+  updateNominee: (policyId: string, nomineeId: string, data: Record<string, unknown>) =>
+    api.patch(`/policies/${policyId}/nominees/${nomineeId}`, data),
+
+  removeNominee: (policyId: string, nomineeId: string) =>
+    api.delete(`/policies/${policyId}/nominees/${nomineeId}`),
 }

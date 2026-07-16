@@ -1,4 +1,8 @@
-import { IsString, IsEmail, MinLength, MaxLength, Matches, IsOptional, IsBoolean, IsIn } from 'class-validator'
+import {
+  IsString, IsEmail, MinLength, MaxLength, Matches, IsOptional, IsBoolean, IsIn,
+  ArrayMinSize, ArrayMaxSize, ValidateNested,
+} from 'class-validator'
+import { Type } from 'class-transformer'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export class LoginDto {
@@ -71,6 +75,61 @@ export class RegisterDto {
   planType?: string
 }
 
+export class FamilyMemberDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(30)
+  @Matches(/^[a-zA-Z0-9_]+$/, { message: 'Username: only letters, numbers, underscores' })
+  username: string
+
+  @ApiProperty()
+  @IsEmail()
+  email: string
+
+  @ApiProperty()
+  @IsString()
+  @Matches(/^[6-9]\d{9}$/, { message: 'Enter valid 10-digit mobile number' })
+  mobile: string
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(2)
+  firstName: string
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  lastName: string
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  @Matches(/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[@$!%*?&])/, {
+    message: 'Password must contain letters, numbers, and symbols',
+  })
+  password: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  relationship?: string
+}
+
+export class RegisterFamilyDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  familyName?: string
+
+  @ApiProperty({ type: [FamilyMemberDto] })
+  @ArrayMinSize(1)
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => FamilyMemberDto)
+  members: FamilyMemberDto[]
+}
+
 export class SendOtpDto {
   @ApiProperty({ example: 'user@email.com or 9876543210' })
   @IsString()
@@ -126,4 +185,24 @@ export class ChangePasswordDto {
   @MinLength(8)
   @Matches(/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[@$!%*?&])/)
   newPassword: string
+}
+
+export class UpdateProfileDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(2) firstName?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) lastName?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() dateOfBirth?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() address?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() occupation?: string
+  @ApiPropertyOptional() @IsOptional() annualIncome?: number
+}
+
+export class UpdateNotificationPreferenceDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() premiumDue?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() emiDue?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() policyExpiry?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() investmentAlerts?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() weeklyDigest?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() monthlyReport?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() promotions?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() securityAlerts?: boolean
 }

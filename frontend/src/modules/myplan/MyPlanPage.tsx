@@ -1,39 +1,50 @@
 import React, { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Calendar, IndianRupee, Landmark, ShieldCheck, Copy, Download, ChevronRight,
   ChevronLeft, Plus, Pencil, Trash2, Search, Filter as FilterIcon, RotateCcw,
-  Info, Umbrella, Car, Plane, Home, PawPrint, FileText, Shield, CheckCircle2,
+  Info, Umbrella, Car, Plane, Home, PawPrint, HeartPulse, Shield, FileText, CheckCircle2,
   Headphones, CalendarDays, List, MoreVertical, Wallet, Receipt
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { formatCurrency } from '@/utils/formatters'
+import { DashboardSkeleton } from '@/components/ui/Skeleton'
+import { formatCurrency, formatDate, formatDateTime, daysFromNow } from '@/utils/formatters'
+import { policyService } from '@/services/policyService'
+import { dashboardService } from '@/services/dashboardService'
+import { useAuthStore } from '@/store/authStore'
+import { API_BASE_URL } from '@/constants'
+import type { Policy, DashboardStats, DuePremium } from '@/types'
 import toast from 'react-hot-toast'
 
-// ─── Static plan data (matches PolicyNext UI mock V1) ────────────────────────
-
-const PLAN = {
-  month: 'May 2025',
-  totalMonthlyCommitment: 11008,
-  status: 'Active',
-  since: '18 May 2025',
-  expires: '18 May 2026',
-  planId: 'IND-2025-00012345',
-  lastLogin: '18 May 2025, 11:25 AM',
-}
-
-type CategoryKey = 'life' | 'vehicle' | 'travel' | 'home' | 'pet'
+type CategoryKey = 'life' | 'health' | 'vehicle' | 'travel' | 'home' | 'pet' | 'other'
 
 const CATEGORY_META: Record<CategoryKey, {
   label: string; short: string; icon: React.ElementType; color: string; bg: string; badgeBg: string; badgeText: string
 }> = {
   life: { label: 'Life Insurance', short: 'Life', icon: Umbrella, color: '#16a34a', bg: '#f0fdf4', badgeBg: '#dcfce7', badgeText: '#15803d' },
+  health: { label: 'Health Insurance', short: 'Health', icon: HeartPulse, color: '#db2777', bg: '#fdf2f8', badgeBg: '#fce7f3', badgeText: '#be185d' },
   vehicle: { label: 'Vehicle Insurance', short: 'Vehicle', icon: Car, color: '#2563eb', bg: '#eff6ff', badgeBg: '#dbeafe', badgeText: '#1d4ed8' },
   travel: { label: 'Travel Insurance', short: 'Travel', icon: Plane, color: '#7c3aed', bg: '#f5f3ff', badgeBg: '#ede9fe', badgeText: '#6d28d9' },
   home: { label: 'Home Insurance', short: 'Home', icon: Home, color: '#ea580c', bg: '#fff7ed', badgeBg: '#ffedd5', badgeText: '#c2410c' },
-  pet: { label: 'Pet/Animal Insurance', short: 'Pet', icon: PawPrint, color: '#db2777', bg: '#fdf2f8', badgeBg: '#fce7f3', badgeText: '#be185d' },
+  pet: { label: 'Pet/Animal Insurance', short: 'Pet', icon: PawPrint, color: '#0891b2', bg: '#ecfeff', badgeBg: '#cffafe', badgeText: '#0e7490' },
+  other: { label: 'Other Insurance', short: 'Other', icon: Shield, color: '#64748b', bg: '#f1f5f9', badgeBg: '#e2e8f0', badgeText: '#475569' },
+}
+
+// Mirrors backend/src/dashboard/dashboard.service.ts's INSURANCE_KEY_MAP — no dedicated
+// PET type in the schema, so OTHER-typed policies are treated as "pet/animal" here too.
+function categoryFor(insuranceType: string): CategoryKey {
+  switch (insuranceType) {
+    case 'LIFE': return 'life'
+    case 'HEALTH': return 'health'
+    case 'VEHICLE': return 'vehicle'
+    case 'TRAVEL': return 'travel'
+    case 'HOME': return 'home'
+    case 'OTHER': return 'pet'
+    default: return 'other'
+  }
 }
 
 const PROVIDER_STYLE: Record<string, { bg: string; text: string }> = {
@@ -43,65 +54,12 @@ const PROVIDER_STYLE: Record<string, { bg: string; text: string }> = {
   'HDFC Ergo': { bg: '#fee2e2', text: '#b91c1c' },
   'Future Generali': { bg: '#fecaca', text: '#dc2626' },
 }
-
-const POLICIES = [
-  {
-    id: 'pol-life', category: 'life' as CategoryKey, name: 'Term Life Insurance', provider: 'HDFC Life',
-    policyNo: '1234 5678 9012', planType: 'Term Plan', sumInsured: '₹1,00,00,000',
-    startDate: '25 May 2025', endDate: '24 May 2045', premium: 1200, dueDate: '25 May 2025',
-    dueDay: 25, dueMonth: 'May', dueYear: '2025', daysLeft: 10, dueStatus: 'Due Soon' as const,
-  },
-  {
-    id: 'pol-vehicle', category: 'vehicle' as CategoryKey, name: 'Car Insurance', provider: 'Bajaj Allianz',
-    policyNo: '9876 5432 1098', planType: 'Comprehensive', sumInsured: '₹8,00,000',
-    startDate: '30 May 2025', endDate: '29 May 2026', premium: 2458, dueDate: '30 May 2025',
-    dueDay: 28, dueMonth: 'May', dueYear: '2025', daysLeft: 13, dueStatus: 'Due Soon' as const,
-  },
-  {
-    id: 'pol-travel', category: 'travel' as CategoryKey, name: 'Annual Travel Plan', provider: 'ICICI Lombard',
-    policyNo: '5566 7788 1122', planType: 'Annual Multi-Trip', sumInsured: '₹10,00,000',
-    startDate: '02 Jun 2025', endDate: '01 Jun 2026', premium: 550, dueDate: '02 Jun 2025',
-    dueDay: 30, dueMonth: 'May', dueYear: '2025', daysLeft: 15, dueStatus: 'Upcoming' as const,
-  },
-  {
-    id: 'pol-home', category: 'home' as CategoryKey, name: 'Home Shield Plan', provider: 'HDFC Ergo',
-    policyNo: '3344 5566 7788', planType: 'Standard', sumInsured: '₹50,00,000',
-    startDate: '05 Jun 2025', endDate: '04 Jun 2026', premium: 1250, dueDate: '05 Jun 2025',
-    dueDay: 5, dueMonth: 'Jun', dueYear: '2025', daysLeft: 21, dueStatus: 'Upcoming' as const,
-  },
-  {
-    id: 'pol-pet', category: 'pet' as CategoryKey, name: 'Pet Insurance', provider: 'Future Generali',
-    policyNo: '7788 8899 0011', planType: 'Pet Care', sumInsured: '₹2,00,000',
-    startDate: '10 Jun 2025', endDate: '09 Jun 2026', premium: 350, dueDate: '10 Jun 2025',
-    dueDay: 10, dueMonth: 'Jun', dueYear: '2025', daysLeft: 26, dueStatus: 'Upcoming' as const,
-  },
-]
-
-const NOMINEES = [
-  { id: 'n1', policy: POLICIES[0], name: 'Anita Sharma', email: 'anita.sharma@email.com', phone: '+91 98765 43210', relationship: 'Wife', share: 100, dob: '12 Mar 1988', appointedOn: '18 May 2025' },
-  { id: 'n2', policy: POLICIES[1], name: 'Rajat Sharma', email: 'rajat.sharma@email.com', phone: '+91 98765 43210', relationship: 'Self', share: 100, dob: '15 Aug 1990', appointedOn: '18 May 2025' },
-  { id: 'n3', policy: POLICIES[2], name: 'Anita Sharma', email: 'anita.sharma@email.com', phone: '+91 98765 43210', relationship: 'Wife', share: 100, dob: '12 Mar 1988', appointedOn: '18 May 2025' },
-  { id: 'n4', policy: POLICIES[3], name: 'Rajat Sharma', email: 'rajat.sharma@email.com', phone: '+91 98765 43210', relationship: 'Self', share: 100, dob: '15 Aug 1990', appointedOn: '18 May 2025' },
-  { id: 'n5', policy: POLICIES[4], name: 'Anita Sharma', email: 'anita.sharma@email.com', phone: '+91 98765 43210', relationship: 'Wife', share: 100, dob: '12 Mar 1988', appointedOn: '18 May 2025' },
-]
-
-const DOCUMENTS = [
-  { id: 'd1', name: 'Policy Schedule', ref: 'IND-2025-00012345', policy: 'Term Life Insurance', provider: 'HDFC Life', type: 'Policy Document', year: '2025', uploadedOn: '18 May 2025', time: '11:20 AM', ext: 'pdf' },
-  { id: 'd2', name: 'Policy Bond', ref: 'IND-2025-00012345', policy: 'Term Life Insurance', provider: 'HDFC Life', type: 'Policy Document', year: '2025', uploadedOn: '18 May 2025', time: '11:20 AM', ext: 'pdf' },
-  { id: 'd3', name: 'Premium Receipt – May 2025', ref: 'IND-2025-00012345', policy: 'Term Life Insurance', provider: 'HDFC Life', type: 'Receipt', year: '2025', uploadedOn: '18 May 2025', time: '11:20 AM', ext: 'jpg' },
-  { id: 'd4', name: 'Welcome Letter', ref: 'IND-2025-00012345', policy: 'Term Life Insurance', provider: 'HDFC Life', type: 'General Document', year: '2025', uploadedOn: '18 May 2025', time: '11:20 AM', ext: 'pdf' },
-  { id: 'd5', name: 'Claim Intimation Form', ref: '', policy: 'Car Insurance', provider: 'Bajaj Allianz', type: 'Claim Document', year: '2025', uploadedOn: '10 May 2025', time: '09:15 AM', ext: 'pdf' },
-  { id: 'd6', name: 'Illustration', ref: 'IND-2025-00012345', policy: 'Term Life Insurance', provider: 'HDFC Life', type: 'Illustration', year: '2025', uploadedOn: '05 May 2025', time: '04:30 PM', ext: 'xls' },
-  { id: 'd7', name: 'Terms & Conditions', ref: 'IND-2025-00012345', policy: 'Term Life Insurance', provider: 'HDFC Life', type: 'General Document', year: '2025', uploadedOn: '01 May 2025', time: '10:00 AM', ext: 'pdf' },
-]
+function providerStyle(name: string) {
+  return PROVIDER_STYLE[name] ?? { bg: '#f1f5f9', text: '#475569' }
+}
 
 const TABS = ['Plan Summary', 'Plan Details', 'Premium Calendar', 'Nominees', 'Plan Documents'] as const
 type Tab = typeof TABS[number]
-
-const PREMIUM_TOTAL = POLICIES.reduce((s, p) => s + p.premium, 0) // ₹5,808
-const UPCOMING_THIS_MONTH = POLICIES.filter(p => p.dueMonth === 'May').reduce((s, p) => s + p.premium, 0) // ₹4,208
-
-// ─── Shared bits ─────────────────────────────────────────────────────────────
 
 function CategoryIcon({ category, size = 'md' }: { category: CategoryKey; size?: 'sm' | 'md' }) {
   const meta = CATEGORY_META[category]
@@ -115,7 +73,7 @@ function CategoryIcon({ category, size = 'md' }: { category: CategoryKey; size?:
 }
 
 function ProviderLogo({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
-  const style = PROVIDER_STYLE[name] ?? { bg: '#f1f5f9', text: '#475569' }
+  const style = providerStyle(name)
   const box = size === 'sm' ? 'w-5 h-5 text-[9px]' : 'w-6 h-6 text-[10px]'
   return (
     <div className={`${box} rounded-md flex items-center justify-center font-bold shrink-0`}
@@ -127,11 +85,11 @@ function ProviderLogo({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' 
 
 function StatusChip({ label }: { label: string }) {
   const styles: Record<string, string> = {
-    Active: 'bg-green-50 text-green-700',
-    'Due Soon': 'bg-amber-50 text-amber-700',
-    Upcoming: 'bg-blue-50 text-blue-700',
-    Overdue: 'bg-red-50 text-red-600',
-    Expired: 'bg-slate-100 text-slate-500',
+    Active: 'bg-green-50 text-green-700', ACTIVE: 'bg-green-50 text-green-700',
+    'Due Soon': 'bg-amber-50 text-amber-700', 'due-soon': 'bg-amber-50 text-amber-700',
+    Upcoming: 'bg-blue-50 text-blue-700', upcoming: 'bg-blue-50 text-blue-700',
+    Overdue: 'bg-red-50 text-red-600', overdue: 'bg-red-50 text-red-600',
+    Expired: 'bg-slate-100 text-slate-500', EXPIRED: 'bg-slate-100 text-slate-500',
   }
   return (
     <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${styles[label] ?? 'bg-slate-100 text-slate-600'}`}>
@@ -158,7 +116,14 @@ function InfoBanner({ children, action }: { children: React.ReactNode; action?: 
 
 // ─── Tab 1: Plan Summary ─────────────────────────────────────────────────────
 
-function PlanSummaryTab({ onViewDetails }: { onViewDetails: (id: string) => void }) {
+function PlanSummaryTab({ policies, onViewDetails }: { policies: Policy[]; onViewDetails: (id: string) => void }) {
+  const total = policies.reduce((s, p) => s + Number(p.premiumAmount), 0)
+  const byCategory = policies.reduce<Record<string, number>>((acc, p) => {
+    const key = categoryFor(p.insuranceType)
+    acc[key] = (acc[key] ?? 0) + 1
+    return acc
+  }, {})
+
   return (
     <Card padding="md">
       <div className="flex items-center justify-between mb-4">
@@ -169,26 +134,23 @@ function PlanSummaryTab({ onViewDetails }: { onViewDetails: (id: string) => void
         </button>
       </div>
 
-      {/* Category tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-        {POLICIES.map(p => {
-          const meta = CATEGORY_META[p.category]
+        {(Object.keys(byCategory) as CategoryKey[]).map(key => {
+          const meta = CATEGORY_META[key]
           return (
-            <div key={p.id} className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-100 bg-white">
-              <CategoryIcon category={p.category} />
+            <div key={key} className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-100 bg-white">
+              <CategoryIcon category={key} />
               <div className="min-w-0">
-                <p className="text-[11px] text-slate-500 leading-tight truncate">
-                  {p.category === 'life' ? 'Total Life Insurance' : meta.label}
-                </p>
-                <p className="text-lg font-bold text-slate-900 leading-tight">1</p>
-                <p className="text-[10px] text-slate-400">Policy</p>
+                <p className="text-[11px] text-slate-500 leading-tight truncate">{meta.label}</p>
+                <p className="text-lg font-bold text-slate-900 leading-tight">{byCategory[key]}</p>
+                <p className="text-[10px] text-slate-400">{byCategory[key] === 1 ? 'Policy' : 'Policies'}</p>
               </div>
             </div>
           )
         })}
+        {policies.length === 0 && <p className="text-xs text-slate-400 col-span-full py-4 text-center">No policies yet — add your first one to see it here.</p>}
       </div>
 
-      {/* Monthly commitment breakdown */}
       <h4 className="text-sm font-semibold text-slate-800 mb-3">Your Monthly Commitment Breakdown</h4>
       <div className="overflow-x-auto -mx-5 px-5">
         <table className="w-full min-w-[820px] border-separate border-spacing-0">
@@ -198,41 +160,44 @@ function PlanSummaryTab({ onViewDetails }: { onViewDetails: (id: string) => void
               <Th>Policy / Plan</Th>
               <Th>Provider / Company</Th>
               <Th>Policy No.</Th>
-              <Th>Due Date</Th>
-              <Th>Monthly Premium (₹)</Th>
+              <Th>Next Due Date</Th>
+              <Th>Premium (₹)</Th>
               <Th className="rounded-r-lg">Action</Th>
             </tr>
           </thead>
           <tbody>
-            {POLICIES.map(p => (
-              <tr key={p.id} className="border-b border-slate-50">
-                <td className="px-3 py-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <CategoryIcon category={p.category} size="sm" />
-                    <span className="text-xs font-medium text-slate-700 whitespace-nowrap">{CATEGORY_META[p.category].label}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.name}</td>
-                <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.provider}</td>
-                <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.policyNo}</td>
-                <td className="px-3 py-3 text-xs font-medium text-red-500 border-b border-slate-100 whitespace-nowrap">{p.dueDate}</td>
-                <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100 whitespace-nowrap">{formatCurrency(p.premium)}</td>
-                <td className="px-3 py-3 border-b border-slate-100">
-                  <button
-                    className="text-[11px] font-medium text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 flex items-center gap-1 whitespace-nowrap"
-                    onClick={() => onViewDetails(p.id)}
-                  >
-                    View Details <ChevronRight size={11} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {policies.map(p => {
+              const key = categoryFor(p.insuranceType)
+              return (
+                <tr key={p.id} className="border-b border-slate-50">
+                  <td className="px-3 py-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <CategoryIcon category={key} size="sm" />
+                      <span className="text-xs font-medium text-slate-700 whitespace-nowrap">{CATEGORY_META[key].label}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.policyName}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.provider}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.policyNumber ?? '—'}</td>
+                  <td className="px-3 py-3 text-xs font-medium text-red-500 border-b border-slate-100 whitespace-nowrap">{p.nextPremiumDate ? formatDate(p.nextPremiumDate) : '—'}</td>
+                  <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100 whitespace-nowrap">{formatCurrency(Number(p.premiumAmount))}</td>
+                  <td className="px-3 py-3 border-b border-slate-100">
+                    <button
+                      className="text-[11px] font-medium text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 flex items-center gap-1 whitespace-nowrap"
+                      onClick={() => onViewDetails(p.id)}
+                    >
+                      View Details <ChevronRight size={11} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
       <div className="flex items-center justify-between px-4 py-3 mt-2 bg-green-50 rounded-lg">
         <p className="text-xs font-semibold text-slate-700">Total Monthly Commitment</p>
-        <p className="text-sm font-bold text-slate-900">{formatCurrency(PREMIUM_TOTAL)}</p>
+        <p className="text-sm font-bold text-slate-900">{formatCurrency(total)}</p>
       </div>
     </Card>
   )
@@ -240,32 +205,37 @@ function PlanSummaryTab({ onViewDetails }: { onViewDetails: (id: string) => void
 
 // ─── Tab 2: Plan Details ─────────────────────────────────────────────────────
 
-function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void }) {
+function PlanDetailsTab({ policies, onViewDetails }: { policies: Policy[]; onViewDetails: (id: string) => void }) {
   const [category, setCategory] = useState('All Categories')
   const [provider, setProvider] = useState('All Providers')
   const [status, setStatus] = useState('All Status')
 
-  const filtered = POLICIES.filter(p =>
-    (category === 'All Categories' || CATEGORY_META[p.category].short === category) &&
+  const providers = [...new Set(policies.map(p => p.provider))]
+  const filtered = policies.filter(p =>
+    (category === 'All Categories' || CATEGORY_META[categoryFor(p.insuranceType)].short === category) &&
     (provider === 'All Providers' || p.provider === provider) &&
-    (status === 'All Status' || status === 'Active')
+    (status === 'All Status' || p.status === status)
   )
+
+  const activeCount = policies.filter(p => p.status === 'ACTIVE').length
+  const dueSoonCount = policies.filter(p => p.nextPremiumDate && daysFromNow(p.nextPremiumDate) <= 15 && daysFromNow(p.nextPremiumDate) >= 0).length
+  const overdueCount = policies.filter(p => p.nextPremiumDate && daysFromNow(p.nextPremiumDate) < 0).length
+  const expiredCount = policies.filter(p => p.status === 'EXPIRED' || p.status === 'LAPSED').length
 
   const selectCls = 'text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2'
 
   return (
     <div className="space-y-4">
       <Card padding="md">
-        {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <select className={selectCls} value={category} onChange={e => setCategory(e.target.value)}>
             {['All Categories', ...Object.values(CATEGORY_META).map(m => m.short)].map(o => <option key={o}>{o}</option>)}
           </select>
           <select className={selectCls} value={provider} onChange={e => setProvider(e.target.value)}>
-            {['All Providers', ...POLICIES.map(p => p.provider)].map(o => <option key={o}>{o}</option>)}
+            {['All Providers', ...providers].map(o => <option key={o}>{o}</option>)}
           </select>
           <select className={selectCls} value={status} onChange={e => setStatus(e.target.value)}>
-            {['All Status', 'Active', 'Expired'].map(o => <option key={o}>{o}</option>)}
+            {['All Status', 'ACTIVE', 'EXPIRED', 'LAPSED', 'PENDING'].map(o => <option key={o}>{o}</option>)}
           </select>
           <button
             className="ml-auto text-xs font-medium text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 flex items-center gap-1.5"
@@ -275,7 +245,6 @@ function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void
           </button>
         </div>
 
-        {/* Policies table */}
         <div className="overflow-x-auto -mx-5 px-5">
           <table className="w-full min-w-[1000px] border-separate border-spacing-0">
             <thead>
@@ -284,7 +253,7 @@ function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void
                 <Th>Category</Th>
                 <Th>Provider / Company</Th>
                 <Th>Policy No.</Th>
-                <Th>Plan Type</Th>
+                <Th>Plan</Th>
                 <Th>Sum Insured / Coverage</Th>
                 <Th>Start Date</Th>
                 <Th>End Date</Th>
@@ -294,14 +263,15 @@ function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void
             </thead>
             <tbody>
               {filtered.map(p => {
-                const meta = CATEGORY_META[p.category]
+                const key = categoryFor(p.insuranceType)
+                const meta = CATEGORY_META[key]
                 return (
                   <tr key={p.id}>
                     <td className="px-3 py-3 border-b border-slate-100">
                       <div className="flex items-center gap-2.5">
-                        <CategoryIcon category={p.category} size="sm" />
+                        <CategoryIcon category={key} size="sm" />
                         <div>
-                          <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{p.name}</p>
+                          <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{p.policyName}</p>
                           <p className="text-[10px] text-slate-400 whitespace-nowrap">{meta.label}</p>
                         </div>
                       </div>
@@ -318,12 +288,12 @@ function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void
                         <span className="text-xs text-slate-700 whitespace-nowrap">{p.provider}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.policyNo}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.planType}</td>
-                    <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100 whitespace-nowrap">{p.sumInsured}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.startDate}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.endDate}</td>
-                    <td className="px-3 py-3 border-b border-slate-100"><StatusChip label="Active" /></td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.policyNumber ?? '—'}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{p.planName ?? '—'}</td>
+                    <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100 whitespace-nowrap">{formatCurrency(Number(p.sumAssured))}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{formatDate(p.policyStartDate)}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{formatDate(p.policyEndDate)}</td>
+                    <td className="px-3 py-3 border-b border-slate-100"><StatusChip label={p.status} /></td>
                     <td className="px-3 py-3 border-b border-slate-100">
                       <button
                         className="text-[11px] font-medium text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 flex items-center gap-1 whitespace-nowrap"
@@ -335,27 +305,30 @@ function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void
                   </tr>
                 )
               })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={10} className="px-3 py-8 text-center text-xs text-slate-400">No policies match your filters.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </Card>
 
-      {/* Summary panels */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card padding="md">
           <h4 className="text-sm font-semibold text-slate-800 mb-4">Category Wise Summary</h4>
-          <div className="grid grid-cols-5 gap-2">
-            {(Object.keys(CATEGORY_META) as CategoryKey[]).map(key => {
+          <div className="grid grid-cols-4 gap-2">
+            {(Object.keys(CATEGORY_META) as CategoryKey[]).filter(k => k !== 'other').map(key => {
               const meta = CATEGORY_META[key]
               const Icon = meta.icon
+              const count = policies.filter(p => categoryFor(p.insuranceType) === key).length
               return (
                 <div key={key} className="flex flex-col items-center text-center gap-1">
                   <div className="w-9 h-9 rounded-full border-2 flex items-center justify-center" style={{ borderColor: meta.color + '40' }}>
                     <Icon size={15} style={{ color: meta.color }} />
                   </div>
                   <p className="text-[9px] text-slate-500 leading-tight">{meta.label}</p>
-                  <p className="text-sm font-bold text-slate-800">1</p>
-                  <p className="text-[9px] text-slate-400">Policy</p>
+                  <p className="text-sm font-bold text-slate-800">{count}</p>
+                  <p className="text-[9px] text-slate-400">{count === 1 ? 'Policy' : 'Policies'}</p>
                 </div>
               )
             })}
@@ -384,12 +357,12 @@ function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void
 
         <Card padding="md" className="bg-green-50/60 border-green-100">
           <p className="text-xs text-slate-500 mb-0.5">Total Policies</p>
-          <p className="text-2xl font-bold text-slate-900 mb-4">{POLICIES.length}</p>
+          <p className="text-2xl font-bold text-slate-900 mb-4">{policies.length}</p>
           <div className="space-y-2.5 text-xs">
-            <div className="flex items-center justify-between"><span className="font-medium text-slate-700">Active Policies</span><span className="font-bold text-slate-900">{POLICIES.length}</span></div>
-            <div className="flex items-center justify-between"><span className="font-medium text-amber-600">Policies Due Soon</span><span className="font-bold text-amber-600">0</span></div>
-            <div className="flex items-center justify-between"><span className="font-medium text-red-500">Overdue Policies</span><span className="font-bold text-red-500">0</span></div>
-            <div className="flex items-center justify-between"><span className="font-medium text-slate-500">Expired Policies</span><span className="font-bold text-slate-600">0</span></div>
+            <div className="flex items-center justify-between"><span className="font-medium text-slate-700">Active Policies</span><span className="font-bold text-slate-900">{activeCount}</span></div>
+            <div className="flex items-center justify-between"><span className="font-medium text-amber-600">Policies Due Soon</span><span className="font-bold text-amber-600">{dueSoonCount}</span></div>
+            <div className="flex items-center justify-between"><span className="font-medium text-red-500">Overdue Policies</span><span className="font-bold text-red-500">{overdueCount}</span></div>
+            <div className="flex items-center justify-between"><span className="font-medium text-slate-500">Expired Policies</span><span className="font-bold text-slate-600">{expiredCount}</span></div>
           </div>
         </Card>
       </div>
@@ -403,21 +376,29 @@ function PlanDetailsTab({ onViewDetails }: { onViewDetails: (id: string) => void
 
 // ─── Tab 3: Premium Calendar ─────────────────────────────────────────────────
 
-function PremiumCalendarTab() {
+function PremiumCalendarTab({ stats, month }: { stats: DashboardStats; month: Date }) {
   const [view, setView] = useState<'calendar' | 'list'>('calendar')
 
-  // May 2025 — starts on Thursday, 31 days; dues on 25, 28, 30; today = 18
-  const firstDayOffset = 4
-  const daysInMonth = 31
-  const dueDays: Record<number, string> = { 25: 'dueSoon', 28: 'dueSoon', 30: 'upcoming' }
+  const firstDayOffset = new Date(month.getFullYear(), month.getMonth(), 1).getDay()
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  const today = new Date()
+  const isCurrentMonth = today.getFullYear() === month.getFullYear() && today.getMonth() === month.getMonth()
+  const dueDays: Record<number, string> = {}
+  stats.duePremiums.forEach(p => {
+    const d = new Date(p.dueDate)
+    if (d.getFullYear() === month.getFullYear() && d.getMonth() === month.getMonth()) {
+      dueDays[d.getDate()] = p.status === 'overdue' ? 'overdue' : p.status === 'due-soon' ? 'dueSoon' : 'upcoming'
+    }
+  })
 
   const legend = [
     { color: '#22c55e', label: 'Paid' },
     { color: '#f59e0b', label: 'Due Soon (Next 15 Days)' },
     { color: '#3b82f6', label: 'Upcoming' },
-    { color: '#a78bfa', label: 'Future' },
     { color: '#ef4444', label: 'Overdue' },
   ]
+
+  const totalDuePremium = stats.duePremiums.reduce((s, p) => s + p.amount, 0)
 
   return (
     <div className="space-y-4">
@@ -428,10 +409,6 @@ function PremiumCalendarTab() {
             <p className="text-xs text-slate-500 mt-0.5">View all upcoming and paid premiums in calendar view.</p>
           </div>
           <div className="flex items-center gap-2">
-            <select className="text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2">
-              <option>All Categories</option>
-              {Object.values(CATEGORY_META).map(m => <option key={m.short}>{m.short}</option>)}
-            </select>
             <div className="flex rounded-lg border border-slate-200 overflow-hidden">
               <button
                 className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium ${view === 'calendar' ? 'bg-green-50 text-green-700' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
@@ -450,13 +427,10 @@ function PremiumCalendarTab() {
         </div>
 
         <div className={`grid grid-cols-1 ${view === 'calendar' ? 'lg:grid-cols-[340px_1fr]' : ''} gap-5`}>
-          {/* Calendar */}
           {view === 'calendar' && (
             <div className="border border-slate-100 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <button className="p-1.5 rounded-lg hover:bg-slate-100"><ChevronLeft size={14} className="text-slate-500" /></button>
-                <p className="text-sm font-semibold text-slate-800">{PLAN.month}</p>
-                <button className="p-1.5 rounded-lg hover:bg-slate-100"><ChevronRight size={14} className="text-slate-500" /></button>
+                <p className="text-sm font-semibold text-slate-800">{month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
               </div>
               <div className="grid grid-cols-7 gap-1 mb-1">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
@@ -465,18 +439,18 @@ function PremiumCalendarTab() {
               </div>
               <div className="grid grid-cols-7 gap-1">
                 {Array.from({ length: firstDayOffset }, (_, i) => (
-                  <div key={`prev-${i}`} className="aspect-square flex items-center justify-center text-[11px] text-slate-300">{27 + i}</div>
+                  <div key={`prev-${i}`} className="aspect-square" />
                 ))}
                 {Array.from({ length: daysInMonth }, (_, i) => {
                   const day = i + 1
                   const due = dueDays[day]
-                  const isToday = day === 18
+                  const isToday = isCurrentMonth && day === today.getDate()
                   return (
                     <div
                       key={day}
                       className={`aspect-square flex items-center justify-center rounded-full text-[11px] relative
                         ${isToday ? 'bg-green-600 text-white font-bold' : due ? 'font-semibold text-slate-800' : 'text-slate-600 hover:bg-slate-50'}`}
-                      style={due && !isToday ? { backgroundColor: due === 'dueSoon' ? '#fef3c7' : '#dbeafe' } : undefined}
+                      style={due && !isToday ? { backgroundColor: due === 'dueSoon' ? '#fef3c7' : due === 'overdue' ? '#fee2e2' : '#dbeafe' } : undefined}
                     >
                       {day}
                     </div>
@@ -497,7 +471,6 @@ function PremiumCalendarTab() {
             </div>
           )}
 
-          {/* Upcoming premiums list */}
           <div>
             <h4 className="text-sm font-semibold text-slate-800 mb-3">Upcoming Premiums</h4>
             <div className="overflow-x-auto">
@@ -513,59 +486,59 @@ function PremiumCalendarTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {POLICIES.map(p => (
-                    <tr key={p.id}>
-                      <td className="px-3 py-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-1 h-9 rounded-full ${p.dueStatus === 'Due Soon' ? 'bg-amber-400' : 'bg-blue-400'}`} />
-                          <div>
-                            <p className="text-sm font-bold text-slate-800 leading-none">{String(p.dueDay).padStart(2, '0')}</p>
-                            <p className="text-[10px] text-slate-400">{p.dueMonth}<br />{p.dueYear}</p>
+                  {stats.duePremiums.length === 0 && (
+                    <tr><td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400">No premiums due this month. 🎉</td></tr>
+                  )}
+                  {stats.duePremiums.map((p: DuePremium) => {
+                    const d = new Date(p.dueDate)
+                    const daysLeft = Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                    return (
+                      <tr key={p.id}>
+                        <td className="px-3 py-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-1 h-9 rounded-full ${p.status === 'due-soon' ? 'bg-amber-400' : p.status === 'overdue' ? 'bg-red-400' : 'bg-blue-400'}`} />
+                            <div>
+                              <p className="text-sm font-bold text-slate-800 leading-none">{String(d.getDate()).padStart(2, '0')}</p>
+                              <p className="text-[10px] text-slate-400">{d.toLocaleDateString('en-US', { month: 'short' })}<br />{d.getFullYear()}</p>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2.5">
-                          <CategoryIcon category={p.category} size="sm" />
-                          <div>
-                            <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{p.name}</p>
-                            <p className="text-[10px] text-slate-400 whitespace-nowrap">{CATEGORY_META[p.category].label}</p>
+                        </td>
+                        <td className="px-3 py-3 border-b border-slate-100">
+                          <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{p.policyName}</p>
+                        </td>
+                        <td className="px-3 py-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <ProviderLogo name={p.insurer} />
+                            <span className="text-xs text-slate-700 whitespace-nowrap">{p.insurer}</span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <ProviderLogo name={p.provider} />
-                          <span className="text-xs text-slate-700 whitespace-nowrap">{p.provider}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100 whitespace-nowrap">{formatCurrency(p.premium)}</td>
-                      <td className="px-3 py-3 border-b border-slate-100">
-                        <div>
-                          <StatusChip label={p.dueStatus} />
-                          <p className="text-[10px] text-slate-400 mt-1">{p.daysLeft} days left</p>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 border-b border-slate-100">
-                        <div className="flex items-center gap-1.5">
-                          <Button size="xs" variant="outline" className="text-xs" onClick={() => toast.success(`Payment initiated for ${p.name}`)}>Pay Now</Button>
-                          <button className="p-1 rounded hover:bg-slate-100"><MoreVertical size={13} className="text-slate-400" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100 whitespace-nowrap">{formatCurrency(p.amount)}</td>
+                        <td className="px-3 py-3 border-b border-slate-100">
+                          <div>
+                            <StatusChip label={p.status} />
+                            {daysLeft >= 0 && <p className="text-[10px] text-slate-400 mt-1">{daysLeft} days left</p>}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 border-b border-slate-100">
+                          <div className="flex items-center gap-1.5">
+                            <Button size="xs" variant="outline" className="text-xs" onClick={() => toast.success(`Payment initiated for ${p.policyName}`)}>Pay Now</Button>
+                            <button className="p-1 rounded hover:bg-slate-100"><MoreVertical size={13} className="text-slate-400" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        {/* Bottom summary strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-[1fr_1fr_1fr_auto] gap-4 items-center mt-5 p-4 bg-slate-50/70 rounded-xl">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center mt-5 p-4 bg-slate-50/70 rounded-xl">
           {[
-            { icon: IndianRupee, iconBg: '#dcfce7', iconColor: '#16a34a', label: 'Total Monthly Commitment', value: formatCurrency(PLAN.totalMonthlyCommitment) },
+            { icon: IndianRupee, iconBg: '#dcfce7', iconColor: '#16a34a', label: 'Total Monthly Commitment', value: formatCurrency(stats.totalMonthlyCommitment) },
             { icon: Receipt, iconBg: '#f1f5f9', iconColor: '#64748b', label: 'Paid This Month', value: formatCurrency(0) },
-            { icon: Calendar, iconBg: '#ffedd5', iconColor: '#ea580c', label: 'Upcoming This Month', value: formatCurrency(UPCOMING_THIS_MONTH) },
+            { icon: Calendar, iconBg: '#ffedd5', iconColor: '#ea580c', label: 'Due This Month', value: formatCurrency(totalDuePremium) },
           ].map(s => (
             <div key={s.label} className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: s.iconBg }}>
@@ -577,9 +550,6 @@ function PremiumCalendarTab() {
               </div>
             </div>
           ))}
-          <button className="text-xs font-medium text-slate-600 border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 flex items-center gap-1 justify-self-start lg:justify-self-end">
-            View Payment History <ChevronRight size={12} />
-          </button>
         </div>
       </Card>
 
@@ -596,8 +566,10 @@ function PremiumCalendarTab() {
 
 // ─── Tab 4: Nominees ─────────────────────────────────────────────────────────
 
-function NomineesTab() {
+function NomineesTab({ policies }: { policies: Policy[] }) {
   const navigate = useNavigate()
+  const rows = policies.flatMap(p => (p.nominees ?? []).map(n => ({ nominee: n, policy: p })))
+
   return (
     <div className="space-y-4">
       <Card padding="md">
@@ -623,51 +595,56 @@ function NomineesTab() {
               </tr>
             </thead>
             <tbody>
-              {NOMINEES.map(n => (
-                <tr key={n.id}>
-                  <td className="px-3 py-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2.5">
-                      <CategoryIcon category={n.policy.category} size="sm" />
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{n.policy.name}</p>
-                        <p className="text-[10px] text-slate-400 whitespace-nowrap">{n.policy.provider}</p>
-                        <p className="text-[10px] text-slate-400 whitespace-nowrap">Policy No: {n.policy.policyNo}</p>
+              {rows.length === 0 && (
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">No nominees added yet.</td></tr>
+              )}
+              {rows.map(({ nominee: n, policy: p }) => {
+                const key = categoryFor(p.insuranceType)
+                return (
+                  <tr key={n.id}>
+                    <td className="px-3 py-3 border-b border-slate-100">
+                      <div className="flex items-center gap-2.5">
+                        <CategoryIcon category={key} size="sm" />
+                        <div>
+                          <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{p.policyName}</p>
+                          <p className="text-[10px] text-slate-400 whitespace-nowrap">{p.provider}</p>
+                          <p className="text-[10px] text-slate-400 whitespace-nowrap">Policy No: {p.policyNumber ?? '—'}</p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 border-b border-slate-100">
-                    <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{n.name}</p>
-                    <p className="text-[10px] text-slate-400 whitespace-nowrap">{n.email}</p>
-                    <p className="text-[10px] text-slate-400 whitespace-nowrap">{n.phone}</p>
-                  </td>
-                  <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{n.relationship}</td>
-                  <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100">{n.share}%</td>
-                  <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{n.dob}</td>
-                  <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{n.appointedOn}</td>
-                  <td className="px-3 py-3 border-b border-slate-100">
-                    <div className="flex items-center gap-1.5">
-                      <button className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50" onClick={() => toast('Edit nominee coming soon')}>
-                        <Pencil size={12} className="text-slate-500" />
-                      </button>
-                      <button className="p-1.5 rounded-lg border border-red-100 bg-red-50 hover:bg-red-100" onClick={() => toast.error('Delete requires confirmation')}>
-                        <Trash2 size={12} className="text-red-500" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-3 py-3 border-b border-slate-100">
+                      <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{n.fullName}</p>
+                      {n.email && <p className="text-[10px] text-slate-400 whitespace-nowrap">{n.email}</p>}
+                      {n.mobile && <p className="text-[10px] text-slate-400 whitespace-nowrap">{n.mobile}</p>}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{n.relationship}</td>
+                    <td className="px-3 py-3 text-xs font-semibold text-slate-800 border-b border-slate-100">{n.sharePercent}%</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{n.dateOfBirth ? formatDate(n.dateOfBirth) : '—'}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{formatDate(n.createdAt)}</td>
+                    <td className="px-3 py-3 border-b border-slate-100">
+                      <div className="flex items-center gap-1.5">
+                        <button className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50" onClick={() => navigate(`/app/insurance/${p.id}`)}>
+                          <Pencil size={12} className="text-slate-500" />
+                        </button>
+                        <button
+                          className="p-1.5 rounded-lg border border-red-100 bg-red-50 hover:bg-red-100"
+                          onClick={async () => {
+                            try { await policyService.removeNominee(p.id, n.id); toast.success('Nominee removed') } catch { toast.error('Failed to remove nominee') }
+                          }}
+                        >
+                          <Trash2 size={12} className="text-red-500" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       </Card>
 
-      <InfoBanner
-        action={
-          <a className="text-xs font-medium text-blue-600 hover:text-blue-700 whitespace-nowrap flex items-center gap-1 cursor-pointer">
-            Learn more about nominees
-          </a>
-        }
-      >
+      <InfoBanner>
         Ensure your nominee details are up to date to avoid any delays in claim settlement.
       </InfoBanner>
 
@@ -681,27 +658,35 @@ function NomineesTab() {
 
 // ─── Tab 5: Plan Documents ───────────────────────────────────────────────────
 
-const EXT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  pdf: { bg: '#fee2e2', text: '#dc2626', label: 'PDF' },
-  jpg: { bg: '#dcfce7', text: '#16a34a', label: 'JPG' },
-  xls: { bg: '#d1fae5', text: '#059669', label: 'XLS' },
+function extLabel(mimeType: string): { label: string; bg: string; text: string } {
+  if (mimeType.includes('pdf')) return { label: 'PDF', bg: '#fee2e2', text: '#dc2626' }
+  if (mimeType.includes('image')) return { label: 'IMG', bg: '#dcfce7', text: '#16a34a' }
+  return { label: 'DOC', bg: '#d1fae5', text: '#059669' }
 }
 
 function PlanDocumentsTab() {
   const [search, setSearch] = useState('')
   const [policyFilter, setPolicyFilter] = useState('All Policies')
-  const [typeFilter, setTypeFilter] = useState('All Document Types')
-  const [yearFilter, setYearFilter] = useState('All Years')
 
-  const filtered = DOCUMENTS.filter(d =>
-    (search === '' || d.name.toLowerCase().includes(search.toLowerCase()) || d.policy.toLowerCase().includes(search.toLowerCase())) &&
-    (policyFilter === 'All Policies' || d.policy === policyFilter) &&
-    (typeFilter === 'All Document Types' || d.type === typeFilter) &&
-    (yearFilter === 'All Years' || d.year === yearFilter)
+  const { data: links = [], isLoading } = useQuery({
+    queryKey: ['policy-documents-all'],
+    queryFn: async () => {
+      const res = await policyService.getAllDocuments()
+      return ((res.data as any).data ?? []) as {
+        docType?: string; createdAt: string
+        document: { id: string; name: string; mimeType: string; createdAt: string }
+        policy: { id: string; policyName: string; provider: string; policyNumber?: string }
+      }[]
+    },
+  })
+
+  const policyNames = [...new Set(links.map(l => l.policy.policyName))]
+  const filtered = links.filter(l =>
+    (search === '' || l.document.name.toLowerCase().includes(search.toLowerCase()) || l.policy.policyName.toLowerCase().includes(search.toLowerCase())) &&
+    (policyFilter === 'All Policies' || l.policy.policyName === policyFilter)
   )
 
   const selectCls = 'text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2'
-  const reset = () => { setSearch(''); setPolicyFilter('All Policies'); setTypeFilter('All Document Types'); setYearFilter('All Years') }
 
   return (
     <div className="space-y-4">
@@ -711,40 +696,23 @@ function PlanDocumentsTab() {
             <h3 className="text-sm font-semibold text-slate-800">Plan Documents</h3>
             <p className="text-xs text-slate-500 mt-0.5">View and download all your policy and plan related documents.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                className="text-xs border border-slate-200 rounded-lg pl-8 pr-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-green-100"
-                placeholder="Search documents by name or policy"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            <button className="text-xs font-medium text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 flex items-center gap-1.5">
-              <FilterIcon size={12} /> Filter
-            </button>
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              className="text-xs border border-slate-200 rounded-lg pl-8 pr-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-green-100"
+              placeholder="Search documents by name or policy"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <select className={selectCls} value={policyFilter} onChange={e => setPolicyFilter(e.target.value)}>
-            {['All Policies', ...new Set(DOCUMENTS.map(d => d.policy))].map(o => <option key={o}>{o}</option>)}
+            {['All Policies', ...policyNames].map(o => <option key={o}>{o}</option>)}
           </select>
-          <select className={selectCls} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-            {['All Document Types', ...new Set(DOCUMENTS.map(d => d.type))].map(o => <option key={o}>{o}</option>)}
-          </select>
-          <select className={selectCls} value={yearFilter} onChange={e => setYearFilter(e.target.value)}>
-            {['All Years', '2025'].map(o => <option key={o}>{o}</option>)}
-          </select>
-          <button className="text-xs font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 px-2" onClick={reset}>
+          <button className="text-xs font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 px-2" onClick={() => { setSearch(''); setPolicyFilter('All Policies') }}>
             <RotateCcw size={11} /> Reset
-          </button>
-          <button
-            className="ml-auto text-xs font-medium text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 flex items-center gap-1.5"
-            onClick={() => toast.success('Preparing download of all documents')}
-          >
-            <Download size={13} /> Download All
           </button>
         </div>
 
@@ -755,16 +723,18 @@ function PlanDocumentsTab() {
                 <Th className="rounded-l-lg">Document Name</Th>
                 <Th>Policy / Plan</Th>
                 <Th>Document Type</Th>
-                <Th>Year</Th>
                 <Th>Uploaded On</Th>
                 <Th className="rounded-r-lg">Action</Th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(d => {
-                const ext = EXT_STYLE[d.ext] ?? EXT_STYLE.pdf
+              {!isLoading && filtered.length === 0 && (
+                <tr><td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">No policy documents uploaded yet.</td></tr>
+              )}
+              {filtered.map(l => {
+                const ext = extLabel(l.document.mimeType)
                 return (
-                  <tr key={d.id}>
+                  <tr key={l.document.id}>
                     <td className="px-3 py-3 border-b border-slate-100">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[8px] font-bold shrink-0"
@@ -772,30 +742,28 @@ function PlanDocumentsTab() {
                           {ext.label}
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{d.name}</p>
-                          {d.ref && <p className="text-[10px] text-slate-400 whitespace-nowrap">{d.ref}</p>}
+                          <p className="text-xs font-semibold text-slate-800 whitespace-nowrap">{l.document.name}</p>
+                          {l.policy.policyNumber && <p className="text-[10px] text-slate-400 whitespace-nowrap">{l.policy.policyNumber}</p>}
                         </div>
                       </div>
                     </td>
                     <td className="px-3 py-3 border-b border-slate-100">
-                      <p className="text-xs text-slate-700 whitespace-nowrap">{d.policy}</p>
-                      <p className="text-[10px] text-slate-400 whitespace-nowrap">{d.provider}</p>
+                      <p className="text-xs text-slate-700 whitespace-nowrap">{l.policy.policyName}</p>
+                      <p className="text-[10px] text-slate-400 whitespace-nowrap">{l.policy.provider}</p>
                     </td>
-                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{d.type}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100">{d.year}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 border-b border-slate-100 whitespace-nowrap">{l.docType ?? '—'}</td>
                     <td className="px-3 py-3 border-b border-slate-100">
-                      <p className="text-xs text-slate-700 whitespace-nowrap">{d.uploadedOn}</p>
-                      <p className="text-[10px] text-slate-400">{d.time}</p>
+                      <p className="text-xs text-slate-700 whitespace-nowrap">{formatDate(l.document.createdAt)}</p>
                     </td>
                     <td className="px-3 py-3 border-b border-slate-100">
                       <div className="flex items-center gap-1.5">
-                        <button
-                          className="text-[11px] font-medium text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 whitespace-nowrap"
-                          onClick={() => toast.success(`Downloading ${d.name}`)}
+                        <a
+                          className="text-[11px] font-medium text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 inline-block"
+                          href={`${API_BASE_URL}/documents/${l.document.id}/download`}
+                          target="_blank" rel="noreferrer"
                         >
                           Download
-                        </button>
-                        <button className="p-1 rounded hover:bg-slate-100"><MoreVertical size={13} className="text-slate-400" /></button>
+                        </a>
                       </div>
                     </td>
                   </tr>
@@ -803,25 +771,6 @@ function PlanDocumentsTab() {
               })}
             </tbody>
           </table>
-        </div>
-
-        {/* Footer / pagination */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-          <p className="text-xs text-slate-500">Showing 1 to {filtered.length} of {DOCUMENTS.length} documents</p>
-          <div className="flex items-center gap-2">
-            <select className="text-xs text-slate-600 border border-slate-200 rounded-lg px-2 py-1.5">
-              <option>10 per page</option><option>25 per page</option>
-            </select>
-            <div className="flex items-center gap-1">
-              {['|<', '<'].map(s => (
-                <button key={s} className="w-7 h-7 text-[11px] text-slate-400 border border-slate-200 rounded-lg hover:bg-slate-50">{s}</button>
-              ))}
-              <button className="w-7 h-7 text-[11px] font-semibold text-white bg-green-600 rounded-lg">1</button>
-              {['>', '>|'].map(s => (
-                <button key={s} className="w-7 h-7 text-[11px] text-slate-400 border border-slate-200 rounded-lg hover:bg-slate-50">{s}</button>
-              ))}
-            </div>
-          </div>
         </div>
       </Card>
 
@@ -843,27 +792,47 @@ function PlanDocumentsTab() {
 export function MyPlanPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuthStore()
   const initialTab: Tab = location.pathname.endsWith('premium-calendar') ? 'Premium Calendar' : 'Plan Summary'
   const [activeTab, setActiveTab] = useState<Tab>(initialTab)
+  const [calendarMonth] = useState(new Date())
+
+  const { data: policies = [], isLoading: loadingPolicies } = useQuery({
+    queryKey: ['policies'],
+    queryFn: async () => {
+      const res = await policyService.getAll()
+      return ((res.data as any).data ?? []) as Policy[]
+    },
+  })
+
+  const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  const { data: stats, isLoading: loadingStats } = useQuery({
+    queryKey: ['dashboard-stats', monthLabel],
+    queryFn: async () => {
+      const res = await dashboardService.getStats(monthLabel)
+      return (res.data as any).data as DashboardStats
+    },
+  })
+
+  if (loadingPolicies || loadingStats || !stats) return <DashboardSkeleton />
 
   const copyPlanId = () => {
-    navigator.clipboard?.writeText(PLAN.planId)
+    navigator.clipboard?.writeText(stats.plan.planId)
     toast.success('Plan ID copied')
   }
 
   const viewPolicyDetails = (id: string) => navigate(`/app/my-plan/plan-details/${id}`)
 
   const TAB_COMPONENTS: Record<Tab, React.ReactNode> = {
-    'Plan Summary': <PlanSummaryTab onViewDetails={viewPolicyDetails} />,
-    'Plan Details': <PlanDetailsTab onViewDetails={viewPolicyDetails} />,
-    'Premium Calendar': <PremiumCalendarTab />,
-    'Nominees': <NomineesTab />,
+    'Plan Summary': <PlanSummaryTab policies={policies} onViewDetails={viewPolicyDetails} />,
+    'Plan Details': <PlanDetailsTab policies={policies} onViewDetails={viewPolicyDetails} />,
+    'Premium Calendar': <PremiumCalendarTab stats={stats} month={calendarMonth} />,
+    'Nominees': <NomineesTab policies={policies} />,
     'Plan Documents': <PlanDocumentsTab />,
   }
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-[1400px] mx-auto">
-      {/* Page header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -878,7 +847,7 @@ export function MyPlanPage() {
             )}
           </div>
           <div className="hidden sm:flex items-center gap-3">
-            <p className="text-xs text-slate-500">Last login: {PLAN.lastLogin}</p>
+            <p className="text-xs text-slate-500">Last login: {user?.lastLogin ? formatDateTime(user.lastLogin) : '—'}</p>
             <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
               <Shield size={11} /> Secure Session
             </div>
@@ -886,7 +855,6 @@ export function MyPlanPage() {
         </div>
       </motion.div>
 
-      {/* Plan header strip */}
       <Card padding="none">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 lg:divide-x divide-slate-100">
           <div className="flex items-center gap-3 p-4">
@@ -895,11 +863,7 @@ export function MyPlanPage() {
             </div>
             <div>
               <p className="text-[11px] text-slate-500">Month &amp; Year</p>
-              <select className="text-sm font-bold text-slate-900 bg-transparent -ml-0.5 cursor-pointer focus:outline-none">
-                <option>{PLAN.month}</option>
-                <option>Jun 2025</option>
-                <option>Jul 2025</option>
-              </select>
+              <p className="text-sm font-bold text-slate-900">{monthLabel}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-4">
@@ -908,7 +872,7 @@ export function MyPlanPage() {
             </div>
             <div>
               <p className="text-[11px] text-slate-500">Total Monthly Commitment</p>
-              <p className="text-base font-bold text-slate-900">{formatCurrency(PLAN.totalMonthlyCommitment)}</p>
+              <p className="text-base font-bold text-slate-900">{formatCurrency(stats.totalMonthlyCommitment)}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-4">
@@ -917,9 +881,9 @@ export function MyPlanPage() {
             </div>
             <div>
               <p className="text-[11px] text-slate-500">Plan Status</p>
-              <p className="text-base font-bold text-slate-900 leading-tight">{PLAN.status}</p>
-              <p className="text-[10px] text-slate-400">Since {PLAN.since}</p>
-              <p className="text-[10px] text-green-600">Expires on {PLAN.expires}</p>
+              <p className="text-base font-bold text-slate-900 leading-tight">{stats.plan.status}</p>
+              <p className="text-[10px] text-slate-400">Since {formatDate(stats.plan.startDate)}</p>
+              <p className="text-[10px] text-green-600">Expires on {formatDate(stats.plan.expiryDate)}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-4">
@@ -929,7 +893,7 @@ export function MyPlanPage() {
             <div className="min-w-0">
               <p className="text-[11px] text-slate-500">Plan ID</p>
               <div className="flex items-center gap-1.5">
-                <p className="text-sm font-bold text-slate-900 truncate">{PLAN.planId}</p>
+                <p className="text-sm font-bold text-slate-900 truncate">{stats.plan.planId}</p>
                 <button className="p-1 rounded hover:bg-slate-100 shrink-0" onClick={copyPlanId}>
                   <Copy size={12} className="text-slate-400" />
                 </button>
@@ -939,7 +903,6 @@ export function MyPlanPage() {
         </div>
       </Card>
 
-      {/* Tabs */}
       <div className="border-b border-slate-200 overflow-x-auto">
         <div className="flex gap-1 min-w-max">
           {TABS.map(tab => (

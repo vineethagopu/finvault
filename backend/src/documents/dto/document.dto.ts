@@ -1,13 +1,14 @@
 import { IsString, IsOptional, IsEnum } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 
+// Mirrors the Prisma `DocumentCategory` enum exactly (schema.prisma) — do not drift from it.
 export enum DocumentCategory {
-  POLICY = 'POLICY',
+  INSURANCE = 'INSURANCE',
   INVESTMENT = 'INVESTMENT',
   LOAN = 'LOAN',
-  IDENTITY = 'IDENTITY',
+  KYC = 'KYC',
+  INCOME = 'INCOME',
   TAX = 'TAX',
-  MEDICAL = 'MEDICAL',
   OTHER = 'OTHER',
 }
 
@@ -16,6 +17,9 @@ export class UploadDocumentDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string
   @ApiPropertyOptional() @IsOptional() @IsEnum(DocumentCategory) category?: DocumentCategory
   @ApiPropertyOptional() @IsOptional() @IsString() tags?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() policyId?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() loanId?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() docType?: string
 }
 
 export class DocumentFiltersDto {

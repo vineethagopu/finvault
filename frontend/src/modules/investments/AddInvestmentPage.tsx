@@ -12,20 +12,27 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { investmentService } from '@/services/investmentService'
+import toast from 'react-hot-toast'
 
 const INVESTMENT_TYPES = [
   { value: 'MUTUAL_FUND', label: 'Mutual Funds' },
   { value: 'STOCKS', label: 'Stocks / Equity' },
   { value: 'FIXED_DEPOSIT', label: 'Fixed Deposits' },
-  { value: 'PPF_EPF', label: 'PPF / EPF' },
+  { value: 'PPF', label: 'PPF' },
+  { value: 'NPS', label: 'NPS' },
   { value: 'BONDS', label: 'Bonds / Debentures' },
   { value: 'GOLD_ETF', label: 'Gold / ETF' },
+  { value: 'ULIP', label: 'ULIP' },
   { value: 'REAL_ESTATE', label: 'Real Estate (REIT)' },
-  { value: 'OTHERS', label: 'Others' },
+  { value: 'OTHER', label: 'Others' },
 ]
 
 const MODES = ['Lumpsum', 'SIP', 'Monthly', 'Quarterly', 'Half-Yearly', 'Yearly']
-const ASSET_CLASSES = ['Equity', 'Debt', 'Hybrid', 'Commodity', 'Real Estate', 'Others']
+const ASSET_CLASSES = [
+  { value: 'EQUITY', label: 'Equity' }, { value: 'DEBT', label: 'Debt' }, { value: 'HYBRID', label: 'Hybrid' },
+  { value: 'COMMODITY', label: 'Commodity' }, { value: 'REAL_ESTATE', label: 'Real Estate' }, { value: 'OTHER', label: 'Others' },
+]
 const RISK_LEVELS = ['Low', 'Moderate', 'High', 'Very High']
 const GOALS = ['Retirement', 'Child Education', 'Wealth Creation', 'Tax Saving', 'Emergency Fund', 'Home Purchase', 'Others']
 const LOCK_IN_PERIODS = ['No Lock-in', '1 Year', '3 Years', '5 Years', '15 Years']
@@ -135,6 +142,7 @@ function Tips() {
 export function AddInvestmentPage() {
   const navigate = useNavigate()
   const [saved, setSaved] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -144,7 +152,42 @@ export function AddInvestmentPage() {
     },
   })
 
-  const onSubmit = handleSubmit(() => setSaved(true))
+  const onSubmit = handleSubmit(async (data) => {
+    setSubmitting(true)
+    try {
+      const isSip = data.modeOfInvestment === 'SIP'
+      const extraNotes = [
+        data.schemeName && `Scheme: ${data.schemeName}`,
+        data.investmentGoal && `Goal: ${data.investmentGoal}`,
+        data.lockInPeriod && `Lock-in: ${data.lockInPeriod}`,
+        data.expectedReturnRate && `Expected return: ${data.expectedReturnRate}%`,
+        data.notes,
+      ].filter(Boolean).join(' · ')
+
+      await investmentService.create({
+        investmentName: data.investmentName,
+        investmentType: data.investmentType as any,
+        provider: data.provider,
+        folioNumber: data.folioNumber || undefined,
+        amountInvested: Number(data.amountInvested),
+        currentValue: Number(data.amountInvested),
+        assetClass: data.assetClass as any,
+        riskLevel: data.riskLevel,
+        investmentDate: data.investmentDate,
+        isSip,
+        sipAmount: isSip ? Number(data.amountInvested) : undefined,
+        sipDay: isSip ? new Date(data.investmentDate).getDate() : undefined,
+        status: 'ACTIVE',
+        notes: extraNotes || undefined,
+      } as any)
+      setSaved(true)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error(err.response?.data?.message || 'Failed to add investment')
+    } finally {
+      setSubmitting(false)
+    }
+  })
 
   const dateField = register('investmentDate')
 
@@ -229,7 +272,7 @@ export function AddInvestmentPage() {
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <Select label="Asset Class" {...register('assetClass')} error={errors.assetClass?.message}>
                     <option value="">Select Asset Class</option>
-                    {ASSET_CLASSES.map(a => <option key={a} value={a}>{a}</option>)}
+                    {ASSET_CLASSES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </Select>
                   <Select label="Risk Level" {...register('riskLevel')} error={errors.riskLevel?.message}>
                     <option value="">Select Risk Level</option>
@@ -271,7 +314,7 @@ export function AddInvestmentPage() {
                 </Button>
                 <div className="flex items-center gap-3">
                   <Button type="button" variant="outline" onClick={() => navigate('/app/investments')}>Cancel</Button>
-                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500">
+                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500" loading={submitting}>
                     Save Investment
                   </Button>
                 </div>

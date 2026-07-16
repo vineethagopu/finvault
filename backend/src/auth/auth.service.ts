@@ -6,7 +6,9 @@ import { JwtService } from '@nestjs/jwt'
 import argon2 from 'argon2'
 import { v4 as uuidv4 } from 'uuid'
 import { PrismaService } from '../prisma/prisma.service'
-import { LoginDto, RegisterDto, SendOtpDto, VerifyOtpDto, ChangePasswordDto } from './dto/auth.dto'
+import { EmailService } from '../email/email.service'
+import { SmsService } from '../sms/sms.service'
+import { LoginDto, RegisterDto, RegisterFamilyDto, SendOtpDto, VerifyOtpDto, ChangePasswordDto } from './dto/auth.dto'
 
 const OTP_EXPIRY_MINUTES = 10
 const MAX_OTP_ATTEMPTS = 5
@@ -19,10 +21,28 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private emailService: EmailService,
+    private smsService: SmsService,
   ) {}
 
   private generateOtp(): string {
     return Math.floor(100000 + Math.random() * 900000).toString()
+  }
+
+  private async assertRecentlyVerified(identifier: string, type: 'EMAIL' | 'MOBILE') {
+    const cutoff = new Date()
+    cutoff.setMinutes(cutoff.getMinutes() - 30)
+
+    const verified = await this.prisma.otp.findFirst({
+      where: { identifier, type: type as any, isUsed: true, createdAt: { gte: cutoff } },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (!verified) {
+      throw new BadRequestException(
+        `${type === 'EMAIL' ? 'Email' : 'Mobile number'} is not verified. Please verify with OTP first.`,
+      )
+    }
   }
 
   private async hashPassword(password: string): Promise<string> {
@@ -111,6 +131,9 @@ export class AuthService {
       if (exists.mobile === dto.mobile) throw new ConflictException('Mobile already registered')
     }
 
+    await this.assertRecentlyVerified(dto.email, 'EMAIL')
+    await this.assertRecentlyVerified(dto.mobile, 'MOBILE')
+
     const passwordHash = await this.hashPassword(dto.password)
 
     const user = await this.prisma.user.create({
@@ -122,13 +145,20 @@ export class AuthService {
         lastName: dto.lastName,
         passwordHash,
         planType: (dto.planType as any) || 'INDIVIDUAL',
-        emailVerified: true,  // verified via OTP before this call
+        emailVerified: true,
         mobileVerified: true,
       },
     })
 
     await this.prisma.auditLog.create({
       data: { userId: user.id, action: 'REGISTER', ipAddress: ip },
+    })
+
+    // Best-effort — never blocks or fails registration.
+    void this.emailService.sendMail({
+      to: user.email,
+      subject: 'Welcome to PolicyNext',
+      html: `<p>Hi ${user.firstName},</p><p>Your PolicyNext account (username: <b>${user.username}</b>) has been created successfully.</p>`,
     })
 
     return {
@@ -140,6 +170,110 @@ export class AuthService {
         role: user.role,
         planType: user.planType,
       },
+    }
+  }
+
+  async registerFamily(dto: RegisterFamilyDto, ip?: string) {
+    const members = dto.members
+    if (members.length < 1 || members.length > 5) {
+      throw new BadRequestException('A family account needs between 1 and 5 logins')
+    }
+
+    const usernames = members.map((m) => m.username)
+
+    // Emails and mobiles may legitimately repeat across members (shared common
+    // contact details) — only the login-identifying username must be unique.
+    if (new Set(usernames).size !== usernames.length) {
+      throw new ConflictException('Each family login needs a unique username')
+    }
+
+    const existing = await this.prisma.user.findFirst({ where: { username: { in: usernames } } })
+    if (existing) {
+      throw new ConflictException(`Username "${existing.username}" already taken`)
+    }
+
+    for (const member of members) {
+      await this.assertRecentlyVerified(member.email, 'EMAIL')
+      await this.assertRecentlyVerified(member.mobile, 'MOBILE')
+    }
+
+    const passwordHashes = await Promise.all(members.map((m) => this.hashPassword(m.password)))
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const owner = await tx.user.create({
+        data: {
+          username: members[0].username,
+          email: members[0].email,
+          mobile: members[0].mobile,
+          firstName: members[0].firstName,
+          lastName: members[0].lastName,
+          passwordHash: passwordHashes[0],
+          planType: 'FAMILY',
+          emailVerified: true,
+          mobileVerified: true,
+        },
+      })
+
+      const family = await tx.family.create({
+        data: {
+          name: dto.familyName || `${members[0].lastName} Family`,
+          ownerId: owner.id,
+        },
+      })
+
+      await tx.familyMembership.create({
+        data: { familyId: family.id, userId: owner.id, role: 'OWNER', relationship: members[0].relationship || 'Self' },
+      })
+
+      const createdMembers = [owner]
+
+      for (let i = 1; i < members.length; i++) {
+        const m = members[i]
+        const user = await tx.user.create({
+          data: {
+            username: m.username,
+            email: m.email,
+            mobile: m.mobile,
+            firstName: m.firstName,
+            lastName: m.lastName,
+            passwordHash: passwordHashes[i],
+            planType: 'FAMILY',
+            emailVerified: true,
+            mobileVerified: true,
+          },
+        })
+        await tx.familyMembership.create({
+          data: { familyId: family.id, userId: user.id, role: 'MEMBER', relationship: m.relationship || null },
+        })
+        createdMembers.push(user)
+      }
+
+      return { family, owner, createdMembers }
+    })
+
+    await this.prisma.auditLog.create({
+      data: { userId: result.owner.id, action: 'REGISTER_FAMILY', ipAddress: ip },
+    })
+
+    for (const user of result.createdMembers) {
+      void this.emailService.sendMail({
+        to: user.email,
+        subject: 'Welcome to PolicyNext',
+        html: `<p>Hi ${user.firstName},</p><p>Your PolicyNext family account (username: <b>${user.username}</b>) has been created successfully.</p>`,
+      })
+    }
+
+    return {
+      user: {
+        id: result.owner.id,
+        username: result.owner.username,
+        email: result.owner.email,
+        firstName: result.owner.firstName,
+        role: result.owner.role,
+        planType: result.owner.planType,
+      },
+      familyId: result.family.id,
+      memberCount: result.createdMembers.length,
     }
   }
 
@@ -161,11 +295,25 @@ export class AuthService {
       data: { type: type as any, code, identifier: dto.contactInfo, expiresAt },
     })
 
-    // In production: send via email/SMS service
-    // For dev: log to console
+    // Always logged for local/dev debugging, in addition to the real send below.
     this.logger.log(`OTP for ${dto.contactInfo}: ${code}`)
 
-    return { message: `OTP sent to ${isEmail ? 'email' : 'mobile'}` }
+    if (isEmail) {
+      void this.emailService.sendMail({
+        to: dto.contactInfo,
+        subject: 'Your PolicyNext verification code',
+        html: `<p>Your OTP is <b>${code}</b>. It expires in ${OTP_EXPIRY_MINUTES} minutes.</p>`,
+      })
+    } else {
+      void this.smsService.sendSms(dto.contactInfo, `Your PolicyNext verification code is ${code}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`)
+    }
+
+    // Only surface the raw code back to the client as a fallback when a real
+    // SMS provider isn't configured yet (dev/local) — once TWILIO_* env vars
+    // are set, smsService.usingRealProvider flips true and this disappears.
+    const devCode = !isEmail && !this.smsService.usingRealProvider && process.env.NODE_ENV !== 'production' ? code : undefined
+
+    return { message: `OTP sent to ${isEmail ? 'email' : 'mobile'}`, devCode }
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
@@ -279,5 +427,72 @@ export class AuthService {
     })
     if (!user) throw new NotFoundException('User not found')
     return { data: user }
+  }
+
+  async updateProfile(userId: string, dto: any) {
+    const { dateOfBirth, ...rest } = dto
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { ...rest, ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }) },
+      select: {
+        id: true, username: true, email: true, mobile: true,
+        firstName: true, lastName: true, dateOfBirth: true,
+        address: true, occupation: true, annualIncome: true,
+        role: true, planType: true, avatarUrl: true,
+      },
+    })
+    return { data: user, message: 'Profile updated' }
+  }
+
+  async updateAvatar(userId: string, avatarUrl: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+      select: { id: true, avatarUrl: true },
+    })
+    return { data: user, message: 'Avatar updated' }
+  }
+
+  async getSessions(userId: string, currentRefreshToken?: string) {
+    const sessions = await this.prisma.session.findMany({
+      where: { userId, isRevoked: false, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, deviceInfo: true, ipAddress: true, userAgent: true, createdAt: true, refreshToken: true },
+    })
+    return {
+      data: sessions.map((s) => ({
+        id: s.id,
+        deviceInfo: s.deviceInfo,
+        ipAddress: s.ipAddress,
+        userAgent: s.userAgent,
+        createdAt: s.createdAt,
+        isCurrent: s.refreshToken === currentRefreshToken,
+      })),
+    }
+  }
+
+  async revokeSession(userId: string, sessionId: string) {
+    const session = await this.prisma.session.findFirst({ where: { id: sessionId, userId } })
+    if (!session) throw new NotFoundException('Session not found')
+    await this.prisma.session.update({ where: { id: sessionId }, data: { isRevoked: true } })
+    return { message: 'Session revoked' }
+  }
+
+  async getNotificationPreferences(userId: string) {
+    const prefs = await this.prisma.notificationPreference.upsert({
+      where: { userId },
+      update: {},
+      create: { userId },
+    })
+    return { data: prefs }
+  }
+
+  async updateNotificationPreferences(userId: string, dto: any) {
+    const prefs = await this.prisma.notificationPreference.upsert({
+      where: { userId },
+      update: dto,
+      create: { userId, ...dto },
+    })
+    return { data: prefs, message: 'Notification preferences updated' }
   }
 }

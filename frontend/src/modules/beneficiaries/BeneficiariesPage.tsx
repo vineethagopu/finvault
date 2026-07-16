@@ -1,77 +1,88 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowRight, Baby, CheckCircle2, ChevronLeft, ChevronRight, Eye, HeartPulse,
-  Info, Lightbulb, MoreVertical, PiggyBank, RotateCcw, Search, ShieldCheck,
+  ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Eye,
+  Info, Lightbulb, RotateCcw, Search, ShieldCheck,
   Shield, UserPlus, Users,
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { DashboardSkeleton } from '@/components/ui/Skeleton'
+import { formatDate, formatDateTime, getInitials } from '@/utils/formatters'
+import { beneficiaryService } from '@/services/beneficiaryService'
+import { useAuthStore } from '@/store/authStore'
+import type { Beneficiary } from '@/types'
 
-interface Beneficiary {
-  id: string
-  initials: string
-  avatarBg: string
-  avatarColor: string
-  name: string
-  meta: string
-  relationship: string
-  policy: string
-  policyNo: string
-  type: 'Primary' | 'Contingent'
-  share: string
-  status: string
+interface BeneficiaryRow extends Beneficiary {
+  policy?: { id: string; policyName: string; policyNumber?: string } | null
+}
+interface Summary {
+  total: number; primary: number; other: number; policiesWithBeneficiaries: number
+  byPolicy: { policyName: string; count: number }[]
 }
 
-const BENEFICIARIES: Beneficiary[] = [
-  { id: '1', initials: 'SP', avatarBg: 'bg-purple-50', avatarColor: 'text-purple-600', name: 'Shreya Sharma', meta: 'Daughter | DOB: 12 Jan 2012', relationship: 'Daughter', policy: 'Term Life Insurance', policyNo: 'TLI123456', type: 'Primary', share: '50%', status: 'Active' },
-  { id: '2', initials: 'RP', avatarBg: 'bg-blue-50', avatarColor: 'text-blue-600', name: 'Rahul Sharma', meta: 'Son | DOB: 18 Aug 2015', relationship: 'Son', policy: 'Term Life Insurance', policyNo: 'TLI123456', type: 'Primary', share: '30%', status: 'Active' },
-  { id: '3', initials: 'SM', avatarBg: 'bg-green-50', avatarColor: 'text-green-600', name: 'Sunita Sharma', meta: 'Spouse | DOB: 22 Mar 1988', relationship: 'Spouse', policy: 'Term Life Insurance', policyNo: 'TLI123456', type: 'Primary', share: '20%', status: 'Active' },
-  { id: '4', initials: 'AM', avatarBg: 'bg-amber-50', avatarColor: 'text-amber-600', name: 'Amit Sharma', meta: 'Brother | DOB: 05 May 1990', relationship: 'Brother', policy: 'Term Life Insurance', policyNo: 'TLI123456', type: 'Contingent', share: '100%', status: 'Active' },
-  { id: '5', initials: 'PM', avatarBg: 'bg-pink-50', avatarColor: 'text-pink-600', name: 'Pooja Sharma', meta: 'Sister | DOB: 14 Nov 1992', relationship: 'Sister', policy: 'Term Life Insurance', policyNo: 'TLI123456', type: 'Contingent', share: '100%', status: 'Active' },
-  { id: '6', initials: 'NN', avatarBg: 'bg-indigo-50', avatarColor: 'text-indigo-600', name: 'Neha Sharma', meta: 'Daughter | DOB: 10 Feb 2018', relationship: 'Daughter', policy: 'Health Insurance Plus', policyNo: 'HP987654', type: 'Primary', share: '100%', status: 'Active' },
+const AVATAR_COLORS = [
+  { bg: 'bg-purple-50', text: 'text-purple-600' }, { bg: 'bg-blue-50', text: 'text-blue-600' },
+  { bg: 'bg-green-50', text: 'text-green-600' }, { bg: 'bg-amber-50', text: 'text-amber-600' },
+  { bg: 'bg-pink-50', text: 'text-pink-600' }, { bg: 'bg-indigo-50', text: 'text-indigo-600' },
 ]
+function avatarStyle(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
 
-const STATS = [
-  { label: 'Total Beneficiaries', value: '12', sub: 'Across all policies', icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { label: 'Primary Beneficiaries', value: '8', sub: '67% of total', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
-  { label: 'Contingent Beneficiaries', value: '4', sub: '33% of total', icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
-  { label: 'Policies with Beneficiaries', value: '10', sub: 'Active policies', icon: Shield, color: 'text-blue-600', bg: 'bg-blue-50' },
-]
+const TYPE_LABEL: Record<string, string> = { NOMINEE: 'Nominee', LEGAL_HEIR: 'Legal Heir', ASSIGNEE: 'Assignee', OTHER: 'Other' }
+const TYPE_PILL: Record<string, string> = { NOMINEE: 'bg-green-50 text-green-700', LEGAL_HEIR: 'bg-amber-50 text-amber-700', ASSIGNEE: 'bg-blue-50 text-blue-700', OTHER: 'bg-slate-100 text-slate-600' }
 
-const POLICIES = ['Term Life Insurance', 'Health Insurance Plus']
-const RELATIONSHIPS = ['Spouse', 'Son', 'Daughter', 'Brother', 'Sister']
-const STATUSES = ['Active', 'Inactive']
-
-const SUMMARY = [
-  { label: 'Term Life Insurance', count: '6 Beneficiaries', icon: ShieldCheck, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { label: 'Health Insurance Plus', count: '3 Beneficiaries', icon: HeartPulse, color: 'text-green-600', bg: 'bg-green-50' },
-  { label: 'Child Plan', count: '2 Beneficiaries', icon: Baby, color: 'text-amber-600', bg: 'bg-amber-50' },
-  { label: 'Retirement Plan', count: '1 Beneficiary', icon: PiggyBank, color: 'text-blue-600', bg: 'bg-blue-50' },
-]
+const RELATIONSHIPS = ['Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Brother', 'Sister', 'Other']
 
 const TIPS = [
   'Ensure your beneficiary details are up to date.',
-  'Keep share percentage total 100% for primary beneficiaries.',
+  'Keep share percentage total 100% across your beneficiaries.',
   'Update nominee details for smooth claim settlement.',
 ]
 
 export function BeneficiariesPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
   const [search, setSearch] = useState('')
-  const [policy, setPolicy] = useState('')
   const [relationship, setRelationship] = useState('')
-  const [status, setStatus] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
   const [page, setPage] = useState(1)
 
-  const filtered = useMemo(() => BENEFICIARIES.filter(b =>
-    (!search || b.name.toLowerCase().includes(search.toLowerCase()) || b.policy.toLowerCase().includes(search.toLowerCase()) || b.policyNo.toLowerCase().includes(search.toLowerCase())) &&
-    (!policy || b.policy === policy) &&
-    (!relationship || b.relationship === relationship) &&
-    (!status || b.status === status)
-  ), [search, policy, relationship, status])
+  const { data: beneficiaries = [], isLoading } = useQuery({
+    queryKey: ['beneficiaries'],
+    queryFn: async () => {
+      const res = await beneficiaryService.getAll()
+      return ((res.data as any).data ?? []) as BeneficiaryRow[]
+    },
+  })
+  const { data: summary } = useQuery({
+    queryKey: ['beneficiaries-summary'],
+    queryFn: async () => {
+      const res = await beneficiaryService.getSummary()
+      return (res.data as any).data as Summary
+    },
+  })
 
-  const resetFilters = () => { setSearch(''); setPolicy(''); setRelationship(''); setStatus(''); setPage(1) }
+  const filtered = useMemo(() => beneficiaries.filter(b =>
+    (!search || b.fullName.toLowerCase().includes(search.toLowerCase()) || (b.policy?.policyName ?? '').toLowerCase().includes(search.toLowerCase())) &&
+    (!relationship || b.relationship === relationship) &&
+    (!typeFilter || b.type === typeFilter)
+  ), [beneficiaries, search, relationship, typeFilter])
+
+  const STATS = [
+    { label: 'Total Beneficiaries', value: String(summary?.total ?? 0), sub: 'Across all policies', icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Nominees', value: String(summary?.primary ?? 0), sub: summary && summary.total > 0 ? `${Math.round((summary.primary / summary.total) * 100)}% of total` : '—', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'Other Beneficiaries', value: String(summary?.other ?? 0), sub: summary && summary.total > 0 ? `${Math.round((summary.other / summary.total) * 100)}% of total` : '—', icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Policies with Beneficiaries', value: String(summary?.policiesWithBeneficiaries ?? 0), sub: 'Linked policies', icon: Shield, color: 'text-blue-600', bg: 'bg-blue-50' },
+  ]
+
+  const resetFilters = () => { setSearch(''); setRelationship(''); setTypeFilter(''); setPage(1) }
+
+  if (isLoading) return <DashboardSkeleton />
 
   return (
     <div className="min-h-full bg-white p-4 sm:p-5">
@@ -86,7 +97,7 @@ export function BeneficiariesPage() {
             </nav>
           </div>
           <div className="hidden sm:flex items-center gap-4 pt-2">
-            <p className="text-xs font-bold text-[#34406f]">Last login: 18 May 2025, 11:25 AM</p>
+            <p className="text-xs font-bold text-[#34406f]">Last login: {user?.lastLogin ? formatDateTime(user.lastLogin) : '—'}</p>
             <div className="flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
               <ShieldCheck size={12} /> Secure Session
             </div>
@@ -133,13 +144,6 @@ export function BeneficiariesPage() {
                   />
                 </div>
                 <select
-                  value={policy} onChange={e => { setPolicy(e.target.value); setPage(1) }}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] font-bold text-[#34406f] focus:border-green-500 focus:outline-none"
-                >
-                  <option value="">All Policies</option>
-                  {POLICIES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-                <select
                   value={relationship} onChange={e => { setRelationship(e.target.value); setPage(1) }}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] font-bold text-[#34406f] focus:border-green-500 focus:outline-none"
                 >
@@ -147,11 +151,11 @@ export function BeneficiariesPage() {
                   {RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
                 <select
-                  value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
+                  value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1) }}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] font-bold text-[#34406f] focus:border-green-500 focus:outline-none"
                 >
-                  <option value="">All Status</option>
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="">All Types</option>
+                  {Object.entries(TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
                 <Button variant="outline" size="sm" leftIcon={<RotateCcw size={13} />} onClick={resetFilters}>
                   Reset
@@ -170,41 +174,49 @@ export function BeneficiariesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {filtered.map(b => (
-                      <tr key={b.id} className="text-[13px]">
-                        <td className="px-3 py-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold ${b.avatarBg} ${b.avatarColor}`}>
-                              {b.initials}
+                    {filtered.map(b => {
+                      const avatar = avatarStyle(b.fullName)
+                      return (
+                        <tr key={b.id} className="text-[13px]">
+                          <td className="px-3 py-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold ${avatar.bg} ${avatar.text}`}>
+                                {getInitials(b.fullName)}
+                              </div>
+                              <div>
+                                <p className="font-bold text-[#253261]">{b.fullName}</p>
+                                <p className="text-[11px] font-medium text-[#64729b]">{b.relationship}{b.dateOfBirth ? ` | DOB: ${formatDate(b.dateOfBirth)}` : ''}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-bold text-[#253261]">{b.name}</p>
-                              <p className="text-[11px] font-medium text-[#64729b]">{b.meta}</p>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{b.relationship}</td>
+                          <td className="whitespace-nowrap px-3 py-3.5">
+                            {b.policy ? (
+                              <>
+                                <p className="font-bold text-[#253261]">{b.policy.policyName}</p>
+                                {b.policy.policyNumber && <p className="text-[11px] font-medium text-[#64729b]">Policy No: {b.policy.policyNumber}</p>}
+                              </>
+                            ) : (
+                              <span className="text-[#64729b]">Not linked</span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3.5">
+                            <span className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${TYPE_PILL[b.type]}`}>
+                              {TYPE_LABEL[b.type]}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3.5 font-bold text-[#253261]">{b.sharePercent}%</td>
+                          <td className="whitespace-nowrap px-3 py-3.5">
+                            <span className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${b.isVerified ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{b.isVerified ? 'Verified' : 'Unverified'}</span>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3.5">
+                            <div className="flex items-center gap-0.5 text-slate-400">
+                              <button type="button" title="View" className="rounded p-1.5 hover:bg-slate-50 hover:text-blue-600"><Eye size={15} /></button>
                             </div>
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{b.relationship}</td>
-                        <td className="whitespace-nowrap px-3 py-3.5">
-                          <p className="font-bold text-[#253261]">{b.policy}</p>
-                          <p className="text-[11px] font-medium text-[#64729b]">Policy No: {b.policyNo}</p>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3.5">
-                          <span className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${b.type === 'Primary' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-                            {b.type}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3.5 font-bold text-[#253261]">{b.share}</td>
-                        <td className="whitespace-nowrap px-3 py-3.5">
-                          <span className="inline-block rounded-full bg-green-50 px-2.5 py-1 text-[10px] font-bold text-green-700">{b.status}</span>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3.5">
-                          <div className="flex items-center gap-0.5 text-slate-400">
-                            <button type="button" title="View" className="rounded p-1.5 hover:bg-slate-50 hover:text-blue-600"><Eye size={15} /></button>
-                            <button type="button" title="More" className="rounded p-1.5 hover:bg-slate-50"><MoreVertical size={15} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      )
+                    })}
                     {filtered.length === 0 && (
                       <tr>
                         <td colSpan={7} className="px-3 py-10 text-center text-sm font-semibold text-[#64729b]">
@@ -217,29 +229,7 @@ export function BeneficiariesPage() {
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-4">
-                <p className="text-[12px] font-semibold text-[#64729b]">Showing 1 to {filtered.length} of 12 beneficiaries</p>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
-                  {[1, 2].map(n => (
-                    <button
-                      key={n} type="button" onClick={() => setPage(n)}
-                      className={`h-8 w-8 rounded-lg text-[12px] font-bold transition-colors ${page === n ? 'bg-blue-600 text-white' : 'border border-slate-200 text-[#34406f] hover:bg-slate-50'}`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                  <button
-                    type="button" disabled={page === 2} onClick={() => setPage(p => Math.min(2, p + 1))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
-                  >
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
+                <p className="text-[12px] font-semibold text-[#64729b]">Showing {filtered.length} of {beneficiaries.length} beneficiaries</p>
               </div>
             </Card>
 
@@ -276,24 +266,21 @@ export function BeneficiariesPage() {
             <Card padding="sm" className="rounded-lg">
               <h3 className="mb-3 text-sm font-extrabold text-[#11194f]">Beneficiary Summary</h3>
               <div className="space-y-3.5">
-                {SUMMARY.map(item => {
-                  const Icon = item.icon
-                  return (
-                    <div key={item.label} className="flex items-center gap-3">
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${item.bg}`}>
-                        <Icon size={15} className={item.color} />
-                      </div>
-                      <div>
-                        <p className="text-[12px] font-bold text-[#253261]">{item.label}</p>
-                        <p className="text-[11px] font-medium text-[#64729b]">{item.count}</p>
-                      </div>
+                {(summary?.byPolicy ?? []).length === 0 && (
+                  <p className="text-[12px] text-slate-400">No beneficiaries yet.</p>
+                )}
+                {summary?.byPolicy.map(item => (
+                  <div key={item.policyName} className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-50">
+                      <ShieldCheck size={15} className="text-purple-600" />
                     </div>
-                  )
-                })}
+                    <div>
+                      <p className="text-[12px] font-bold text-[#253261]">{item.policyName}</p>
+                      <p className="text-[11px] font-medium text-[#64729b]">{item.count} Beneficiar{item.count === 1 ? 'y' : 'ies'}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <button type="button" className="mt-4 inline-flex items-center gap-1 text-[12px] font-bold text-green-700 hover:underline">
-                View Policy-wise Details <ArrowRight size={12} />
-              </button>
             </Card>
 
             <Card padding="sm" className="rounded-lg">

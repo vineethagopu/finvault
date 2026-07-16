@@ -52,6 +52,16 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       UPLOAD_DIR: /app/uploads
       PORT: 3000
+      # Email (SMTP) — falls back to an auto-provisioned Ethereal test inbox if SMTP_HOST is unset.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # SMS (Twilio) — falls back to console-log + a dev-only OTP echo if unset.
+      TWILIO_SID: ${TWILIO_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -82,6 +92,7 @@ services:
   # ── NGINX Reverse Proxy ──────────────────────────────────────────────────────
   nginx:
     image: nginx:1.27-alpine
+    profiles: ["production"]
     restart: unless-stopped
     ports:
       - "80:80"
@@ -98,6 +109,7 @@ services:
 
   # ── DB Migration runner (one-shot) ──────────────────────────────────────────
   migrate:
+    profiles: ["production"]
     build:
       context: ./backend
       dockerfile: Dockerfile

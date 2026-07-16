@@ -14,9 +14,40 @@ interface StepperProps {
   currentStep: number
   className?: string
   variant?: 'horizontal' | 'vertical'
+  size?: 'md' | 'sm'
 }
 
-export function Stepper({ steps, currentStep, className, variant = 'horizontal' }: StepperProps) {
+export function Stepper({ steps, currentStep, className, variant = 'horizontal', size = 'md' }: StepperProps) {
+  if (size === 'sm' && variant === 'horizontal') {
+    return (
+      <div className={cn('flex items-center', className)}>
+        {steps.map((step, idx) => {
+          const isCompleted = currentStep > step.id
+          const isCurrent = currentStep === step.id
+          return (
+            <React.Fragment key={step.id}>
+              <div className="flex flex-col items-center gap-1">
+                <div className={cn(
+                  'w-7 h-7 rounded-full flex items-center justify-center transition-all',
+                  isCompleted && 'bg-green-600 text-white',
+                  isCurrent && 'bg-green-600 text-white ring-2 ring-green-100',
+                  !isCompleted && !isCurrent && 'bg-slate-100 text-slate-400 border border-slate-200'
+                )}>
+                  {isCompleted ? <Check size={12} /> : step.icon || <span className="text-[11px] font-semibold">{step.id}</span>}
+                </div>
+                <p className={cn('text-[10px] font-medium hidden sm:block whitespace-nowrap',
+                  isCurrent ? 'text-green-700' : isCompleted ? 'text-slate-600' : 'text-slate-400'
+                )}>{step.label}</p>
+              </div>
+              {idx < steps.length - 1 && (
+                <div className={cn('flex-1 h-0.5 mx-1.5 -mt-4', isCompleted ? 'bg-green-600' : 'bg-slate-200')} />
+              )}
+            </React.Fragment>
+          )
+        })}
+      </div>
+    )
+  }
   if (variant === 'vertical') {
     return (
       <div className={cn('flex flex-col gap-0', className)}>

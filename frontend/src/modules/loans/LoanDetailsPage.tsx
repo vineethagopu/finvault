@@ -1,103 +1,28 @@
-import { useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
-  ArrowLeft, Banknote, CalendarDays, ChevronRight, Download, FilePlus2,
-  FileText, HandCoins, Headset, Info, MoreVertical, Percent, ShieldCheck, Wallet,
+  ArrowLeft, Banknote, CalendarDays, Download, FilePlus2,
+  FileText, HandCoins, Headset, Info, Percent, ShieldCheck, Wallet,
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { formatCurrency } from '@/utils/formatters'
+import { DashboardSkeleton } from '@/components/ui/Skeleton'
+import { formatCurrency, formatDate } from '@/utils/formatters'
+import { loanService } from '@/services/loanService'
+import { API_BASE_URL } from '@/constants'
+import type { Loan } from '@/types'
+import toast from 'react-hot-toast'
 
-const LOAN = {
-  accountNo: 'LN1234567890',
-  type: 'Policy Loan',
-  tag: 'Secured',
-  amount: 280000,
-  outstanding: 185750,
-  principalOutstanding: 170000,
-  interestOutstanding: 15750,
-  rate: '9.25% p.a.',
-  rateNote: '(Reducing)',
-  emi: 12750,
-  emiDate: '05 Jun 2025',
-  status: 'Active',
+const LOAN_TYPE_LABEL: Record<string, string> = {
+  HOME_LOAN: 'Home Loan', CAR_LOAN: 'Car Loan', PERSONAL_LOAN: 'Personal Loan', EDUCATION_LOAN: 'Education Loan',
+  BUSINESS_LOAN: 'Business Loan', GOLD_LOAN: 'Gold Loan', POLICY_LOAN: 'Policy Loan', OTHER: 'Other',
 }
-
-const LOAN_OVERVIEW = [
-  { label: 'Policy Name', value: 'Term Life Insurance' },
-  { label: 'Sum Assured', value: '₹10,00,000' },
-  { label: 'Policy Term', value: '20 Years' },
-  { label: 'PPT', value: '15 Years' },
-  { label: 'Loan Start Date', value: '10 Apr 2023' },
-  { label: 'Loan Maturity Date', value: '09 Apr 2043' },
-  { label: 'Loan Tenure', value: '20 Years' },
-  { label: 'Loan Purpose', value: 'Personal' },
-  { label: 'Loan Status', value: 'Active', badge: true },
-  { label: 'Part Prepayment / Foreclosure', value: 'Allowed' },
-]
-
-const SECURITY_DETAILS = [
-  { label: 'Security Type', value: 'Policy Assignment' },
-  { label: 'Policy Ownership', value: 'Self' },
-  { label: 'Assignment Date', value: '10 Apr 2023' },
-  { label: 'Assignment Status', value: 'Active', badge: true },
-  { label: 'Insurer Name', value: 'HDFC Life Insurance Company Limited' },
-  { label: 'Policy Number', value: '87654321' },
-  { label: 'Policy Premium Paying Term', value: '15 Years' },
-  { label: 'Premium Payment Frequency', value: 'Yearly' },
-]
-
-const EMI_DETAILS = [
-  { label: 'EMI Amount', value: '₹12,750' },
-  { label: 'Interest Type', value: 'Reducing Balance' },
-  { label: 'Interest Rate', value: '9.25% p.a.' },
-  { label: 'EMI Frequency', value: 'Monthly' },
-  { label: 'Total No. of EMIs', value: '240' },
-  { label: 'EMIs Paid', value: '25' },
-  { label: 'EMIs Remaining', value: '215' },
-  { label: 'Next EMI Due Date', value: '05 Jun 2025' },
-  { label: 'Total Interest Payable', value: '₹1,24,560 (Approx.)' },
-]
-
-const REPAYMENT_SCHEDULE = [
-  { no: 24, date: '05 Apr 2025', emi: 12750, principal: 11360, interest: 1390, balance: 172420, status: 'Paid' },
-  { no: 25, date: '05 May 2025', emi: 12750, principal: 11448, interest: 1302, balance: 170000, status: 'Paid' },
-  { no: 26, date: '05 Jun 2025', emi: 12750, principal: 11536, interest: 1214, balance: 158464, status: 'Due' },
-  { no: 27, date: '05 Jul 2025', emi: 12750, principal: 11625, interest: 1125, balance: 146839, status: 'Upcoming' },
-  { no: 28, date: '05 Aug 2025', emi: 12750, principal: 11715, interest: 1035, balance: 135124, status: 'Upcoming' },
-]
-
-const TRANSACTIONS = [
-  { date: '05 May 2025', desc: 'EMI Payment - May 2025', mode: 'Auto Debit', amount: 12750 },
-  { date: '05 Apr 2025', desc: 'EMI Payment - Apr 2025', mode: 'Auto Debit', amount: 12750 },
-  { date: '10 Apr 2023', desc: 'Loan Disbursal', mode: 'NEFT', amount: 280000 },
-]
-
-const DOCUMENTS = [
-  { name: 'Loan Agreement.pdf', date: '10 Apr 2023', size: '1.2 MB' },
-  { name: 'Policy Assignment Letter.pdf', date: '10 Apr 2023', size: '450 KB' },
-  { name: 'Loan Statement - FY 2024-25.pdf', date: '01 Apr 2025', size: '820 KB' },
-]
-
-const SUMMARY = [
-  { label: 'Loan Amount', value: formatCurrency(LOAN.amount), icon: HandCoins, color: 'text-green-600', bg: 'bg-green-50' },
-  { label: 'Outstanding Amount', value: formatCurrency(LOAN.outstanding), icon: Banknote, color: 'text-blue-600', bg: 'bg-blue-50' },
-  { label: 'Next EMI Due', value: formatCurrency(LOAN.emi), sub: `on ${LOAN.emiDate}`, icon: CalendarDays, color: 'text-amber-600', bg: 'bg-amber-50' },
-  { label: 'Interest Rate', value: LOAN.rate, icon: Percent, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { label: 'Loan Status', value: 'Active', valueClass: 'text-green-600', icon: ShieldCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-]
-
-const QUICK_ACTIONS = [
-  { label: 'Make Part Payment', desc: 'Pay a part of your outstanding', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
-  { label: 'Foreclose Loan', desc: 'Close your loan account', icon: Banknote, color: 'text-red-500', bg: 'bg-red-50' },
-  { label: 'Download Statement', desc: 'View / download loan statement', icon: Download, color: 'text-blue-600', bg: 'bg-blue-50' },
-  { label: 'Add Loan Manually', desc: 'Add a loan taken outside PolicyNext', icon: FilePlus2, color: 'text-purple-600', bg: 'bg-purple-50' },
-]
 
 const TABS = ['Overview', 'Repayment Schedule', 'Transactions', 'Documents']
 
-function ActiveBadge({ children = 'Active' }: { children?: ReactNode }) {
+function ActiveBadge({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-block rounded-full bg-green-50 px-2.5 py-0.5 text-[11px] font-bold text-green-700">{children}</span>
   )
@@ -123,10 +48,12 @@ function DetailsCard({ title, rows }: { title: string; rows: { label: string; va
   )
 }
 
-function OutstandingDonut() {
+function OutstandingDonut({ loan }: { loan: Loan }) {
   const r = 44
   const c = 2 * Math.PI * r
-  const principalPct = LOAN.principalOutstanding / LOAN.outstanding
+  const outstanding = Number(loan.outstandingAmount)
+  const principal = Number(loan.principalAmount)
+  const principalPct = outstanding > 0 ? Math.min(1, principal > 0 ? outstanding / principal : 0) : 0
   return (
     <div className="relative h-36 w-36 shrink-0">
       <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
@@ -137,7 +64,7 @@ function OutstandingDonut() {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <p className="text-sm font-extrabold text-[#11194f]">{formatCurrency(LOAN.outstanding)}</p>
+        <p className="text-sm font-extrabold text-[#11194f]">{formatCurrency(outstanding)}</p>
         <p className="text-[10px] font-semibold text-[#64729b]">Outstanding</p>
       </div>
     </div>
@@ -146,7 +73,79 @@ function OutstandingDonut() {
 
 export function LoanDetailsPage() {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
   const [activeTab, setActiveTab] = useState('Overview')
+
+  const { data: loan, isLoading } = useQuery({
+    queryKey: ['loan', id],
+    queryFn: async () => {
+      const res = await loanService.getById(id as string)
+      return (res.data as any).data as Loan
+    },
+    enabled: !!id,
+  })
+
+  const { data: transactions = [] } = useQuery({
+    queryKey: ['loan-transactions', id],
+    queryFn: async () => {
+      const res = await loanService.getTransactions(id as string)
+      return ((res.data as any).data ?? []) as { id: string; date: string; description: string; amount: number; type: string }[]
+    },
+    enabled: !!id && activeTab === 'Transactions',
+  })
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['loan-documents', id],
+    queryFn: async () => {
+      const res = await loanService.getDocuments(id as string)
+      return ((res.data as any).data ?? []) as { document: { id: string; name: string; mimeType: string; size: number; createdAt: string } }[]
+    },
+    enabled: !!id && activeTab === 'Documents',
+  })
+
+  if (isLoading || !loan) return <DashboardSkeleton />
+
+  const emiPayments = loan.emiPayments ?? []
+  const paidCount = emiPayments.filter(e => e.status === 'PAID').length
+  const outstanding = Number(loan.outstandingAmount)
+  const principal = Number(loan.principalAmount)
+
+  const LOAN_OVERVIEW = [
+    { label: 'Loan Purpose', value: loan.purpose ?? '—' },
+    { label: 'Loan Start Date', value: formatDate(loan.disbursedDate) },
+    { label: 'Loan Maturity Date', value: formatDate(loan.maturityDate) },
+    { label: 'Loan Tenure', value: `${loan.tenure} months` },
+    { label: 'Loan Status', value: loan.status, badge: true },
+  ]
+  const SECURITY_DETAILS = [
+    { label: 'Security Type', value: loan.securityType ?? (loan.securedByPolicyId ? 'Policy Assignment' : 'Unsecured') },
+    { label: 'Assignment Status', value: loan.securedByPolicyId ? 'Active' : 'N/A', badge: !!loan.securedByPolicyId },
+    { label: 'Lender', value: loan.lender },
+    { label: 'Loan Account Number', value: loan.accountNumber ?? '—' },
+  ]
+  const EMI_DETAILS = [
+    { label: 'EMI Amount', value: formatCurrency(Number(loan.emiAmount)) },
+    { label: 'Interest Type', value: loan.interestType ?? '—' },
+    { label: 'Interest Rate', value: `${loan.interestRate}% p.a.` },
+    { label: 'EMI Frequency', value: loan.repaymentFrequency ?? 'Monthly' },
+    { label: 'Total No. of EMIs', value: String(loan.tenure) },
+    { label: 'EMIs Paid', value: String(paidCount) },
+    { label: 'EMIs Remaining', value: String(loan.remainingTenure) },
+    { label: 'Next EMI Due Date', value: loan.nextEmiDate ? formatDate(loan.nextEmiDate) : '—' },
+  ]
+
+  const SUMMARY = [
+    { label: 'Loan Amount', value: formatCurrency(principal), icon: HandCoins, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'Outstanding Amount', value: formatCurrency(outstanding), icon: Banknote, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Next EMI Due', value: formatCurrency(Number(loan.emiAmount)), sub: loan.nextEmiDate ? `on ${formatDate(loan.nextEmiDate)}` : undefined, icon: CalendarDays, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Interest Rate', value: `${loan.interestRate}% p.a.`, icon: Percent, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Loan Status', value: loan.status, valueClass: 'text-green-600', icon: ShieldCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  ]
+
+  const QUICK_ACTIONS = [
+    { label: 'Download Statement', desc: 'View / download loan statement', icon: Download, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Add Loan Manually', desc: 'Add a loan taken outside PolicyNext', icon: FilePlus2, color: 'text-purple-600', bg: 'bg-purple-50' },
+  ]
 
   return (
     <div className="min-h-full bg-white p-4 sm:p-5">
@@ -163,7 +162,7 @@ export function LoanDetailsPage() {
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-2xl font-extrabold leading-tight text-[#11194f]">Loan Details</h1>
-              <ActiveBadge />
+              <ActiveBadge>{loan.status}</ActiveBadge>
             </div>
             <nav className="mt-3 flex items-center gap-2 text-xs font-bold">
               <button className="text-green-700" onClick={() => navigate('/app/dashboard')}>Home</button>
@@ -172,12 +171,6 @@ export function LoanDetailsPage() {
               <span className="text-slate-400">&gt;</span>
               <span className="text-[#11194f]">Loan Details</span>
             </nav>
-          </div>
-          <div className="hidden sm:flex items-center gap-4 pt-2">
-            <p className="text-xs font-bold text-[#34406f]">Last login: 18 May 2025, 11:25 AM</p>
-            <div className="flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
-              <ShieldCheck size={12} /> Secure Session
-            </div>
           </div>
         </div>
 
@@ -190,41 +183,32 @@ export function LoanDetailsPage() {
                 </div>
                 <div>
                   <p className="text-[11px] font-semibold text-[#64729b]">Loan Account No.</p>
-                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{LOAN.accountNo}</p>
+                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{loan.accountNumber ?? '—'}</p>
                 </div>
                 <div>
                   <p className="text-[11px] font-semibold text-[#64729b]">Loan Type</p>
-                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{LOAN.type}</p>
-                  <span className="mt-1 inline-block rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">{LOAN.tag}</span>
+                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{LOAN_TYPE_LABEL[loan.loanType] ?? loan.loanType}</p>
+                  {loan.securedByPolicyId && <span className="mt-1 inline-block rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">Secured</span>}
                 </div>
                 <div>
                   <p className="text-[11px] font-semibold text-[#64729b]">Loan Amount</p>
-                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(LOAN.amount)}</p>
+                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(principal)}</p>
                 </div>
                 <div>
                   <p className="text-[11px] font-semibold text-[#64729b]">Outstanding Amount</p>
-                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(LOAN.outstanding)}</p>
-                  <p className="text-[11px] font-medium text-[#64729b]">(Principal)</p>
+                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(outstanding)}</p>
                 </div>
                 <div>
                   <p className="text-[11px] font-semibold text-[#64729b]">Interest Rate</p>
-                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{LOAN.rate}</p>
-                  <p className="text-[11px] font-medium text-[#64729b]">{LOAN.rateNote}</p>
+                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{loan.interestRate}% p.a.</p>
                 </div>
                 <div>
                   <p className="text-[11px] font-semibold text-[#64729b]">Next EMI Due</p>
-                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{LOAN.emiDate}</p>
-                  <p className="text-[11px] font-bold text-red-500">{formatCurrency(LOAN.emi)}</p>
+                  <p className="mt-1 text-[13px] font-extrabold text-[#11194f]">{loan.nextEmiDate ? formatDate(loan.nextEmiDate) : '—'}</p>
+                  <p className="text-[11px] font-bold text-red-500">{formatCurrency(Number(loan.emiAmount))}</p>
                 </div>
               </div>
             </Card>
-
-            <div className="flex items-center justify-end gap-1">
-              <Button variant="outline" size="sm" leftIcon={<Download size={14} />}>Download Loan Statement</Button>
-              <button type="button" className="rounded p-1.5 text-slate-400 hover:bg-slate-50">
-                <MoreVertical size={16} />
-              </button>
-            </div>
 
             <div className="border-b border-slate-200">
               <div className="flex gap-1 overflow-x-auto">
@@ -247,25 +231,21 @@ export function LoanDetailsPage() {
                   <Card padding="sm" className="rounded-lg">
                     <h2 className="mb-4 text-[15px] font-extrabold text-[#11194f]">Outstanding Summary</h2>
                     <div className="flex flex-wrap items-center gap-5">
-                      <OutstandingDonut />
+                      <OutstandingDonut loan={loan} />
                       <div className="space-y-3.5">
                         <div>
                           <p className="flex items-center gap-1.5 text-[12px] font-semibold text-[#64729b]">
-                            <span className="h-2 w-2 rounded-full bg-green-500" /> Principal Outstanding
+                            <span className="h-2 w-2 rounded-full bg-green-500" /> Outstanding
                           </p>
-                          <p className="pl-3.5 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(LOAN.principalOutstanding)} (91.5%)</p>
+                          <p className="pl-3.5 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(outstanding)}</p>
                         </div>
                         <div>
                           <p className="flex items-center gap-1.5 text-[12px] font-semibold text-[#64729b]">
-                            <span className="h-2 w-2 rounded-full bg-indigo-400" /> Interest Outstanding
+                            <span className="h-2 w-2 rounded-full bg-indigo-400" /> Original Principal
                           </p>
-                          <p className="pl-3.5 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(LOAN.interestOutstanding)} (8.5%)</p>
+                          <p className="pl-3.5 text-[13px] font-extrabold text-[#11194f]">{formatCurrency(principal)}</p>
                         </div>
                       </div>
-                    </div>
-                    <div className="mt-4 flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2.5">
-                      <Info size={14} className="mt-0.5 shrink-0 text-blue-600" />
-                      <p className="text-[11px] font-semibold text-[#253261]">Interest rate is reducing. EMI amount may change over time.</p>
                     </div>
                   </Card>
                 </div>
@@ -278,7 +258,7 @@ export function LoanDetailsPage() {
                 <div className="flex items-center gap-3 rounded-lg bg-green-50 px-4 py-3">
                   <ShieldCheck size={16} className="shrink-0 text-green-600" />
                   <p className="text-[12px] font-bold text-[#253261]">
-                    Your policy will remain in force as long as the loan and interest are repaid as per the terms.
+                    Keep repaying on schedule to maintain a healthy credit profile.
                   </p>
                 </div>
               </motion.div>
@@ -292,22 +272,23 @@ export function LoanDetailsPage() {
                     <table className="w-full min-w-[680px] text-left">
                       <thead>
                         <tr className="bg-slate-50 text-[11px] font-bold text-[#34406f]">
-                          {['EMI No.', 'Due Date', 'EMI Amount', 'Principal', 'Interest', 'Balance', 'Status'].map(h => (
+                          {['Due Date', 'EMI Amount', 'Principal', 'Interest', 'Status'].map(h => (
                             <th key={h} className="whitespace-nowrap px-3 py-2.5 first:rounded-l-lg last:rounded-r-lg">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {REPAYMENT_SCHEDULE.map(row => (
-                          <tr key={row.no} className="text-[13px]">
-                            <td className="px-3 py-3 font-bold text-[#253261]">{row.no}</td>
-                            <td className="whitespace-nowrap px-3 py-3 font-semibold text-[#34406f]">{row.date}</td>
-                            <td className="px-3 py-3 font-bold text-[#253261]">{formatCurrency(row.emi)}</td>
-                            <td className="px-3 py-3 font-semibold text-[#34406f]">{formatCurrency(row.principal)}</td>
-                            <td className="px-3 py-3 font-semibold text-[#34406f]">{formatCurrency(row.interest)}</td>
-                            <td className="px-3 py-3 font-semibold text-[#34406f]">{formatCurrency(row.balance)}</td>
+                        {emiPayments.length === 0 && (
+                          <tr><td colSpan={5} className="px-3 py-8 text-center text-xs text-slate-400">No EMI records yet.</td></tr>
+                        )}
+                        {emiPayments.map(row => (
+                          <tr key={row.id} className="text-[13px]">
+                            <td className="whitespace-nowrap px-3 py-3 font-semibold text-[#34406f]">{formatDate(row.dueDate)}</td>
+                            <td className="px-3 py-3 font-bold text-[#253261]">{formatCurrency(Number(row.amount))}</td>
+                            <td className="px-3 py-3 font-semibold text-[#34406f]">{row.principal ? formatCurrency(Number(row.principal)) : '—'}</td>
+                            <td className="px-3 py-3 font-semibold text-[#34406f]">{row.interest ? formatCurrency(Number(row.interest)) : '—'}</td>
                             <td className="px-3 py-3">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${row.status === 'Paid' ? 'bg-green-50 text-green-700' : row.status === 'Due' ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-500'}`}>
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${row.status === 'PAID' ? 'bg-green-50 text-green-700' : row.status === 'OVERDUE' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>
                                 {row.status}
                               </span>
                             </td>
@@ -325,14 +306,15 @@ export function LoanDetailsPage() {
                 <Card padding="sm" className="rounded-lg">
                   <h2 className="mb-3 text-[15px] font-extrabold text-[#11194f]">Transactions</h2>
                   <div className="divide-y divide-slate-50">
-                    {TRANSACTIONS.map(txn => (
-                      <div key={txn.desc} className="flex items-center gap-3 py-3">
+                    {transactions.length === 0 && <p className="py-8 text-center text-xs text-slate-400">No transactions yet.</p>}
+                    {transactions.map(txn => (
+                      <div key={txn.id} className="flex items-center gap-3 py-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-50">
                           <Banknote size={16} className="text-green-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-bold text-[#253261]">{txn.desc}</p>
-                          <p className="text-[11px] font-medium text-[#64729b]">{txn.date} · {txn.mode}</p>
+                          <p className="text-[13px] font-bold text-[#253261]">{txn.description}</p>
+                          <p className="text-[11px] font-medium text-[#64729b]">{formatDate(txn.date)}</p>
                         </div>
                         <p className="text-[13px] font-extrabold text-[#11194f]">{formatCurrency(txn.amount)}</p>
                       </div>
@@ -347,16 +329,19 @@ export function LoanDetailsPage() {
                 <Card padding="sm" className="rounded-lg">
                   <h2 className="mb-3 text-[15px] font-extrabold text-[#11194f]">Documents</h2>
                   <div className="divide-y divide-slate-50">
-                    {DOCUMENTS.map(doc => (
-                      <div key={doc.name} className="flex items-center gap-3 py-3">
+                    {documents.length === 0 && <p className="py-8 text-center text-xs text-slate-400">No documents uploaded for this loan yet.</p>}
+                    {documents.map(d => (
+                      <div key={d.document.id} className="flex items-center gap-3 py-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50">
                           <FileText size={16} className="text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="truncate text-[13px] font-bold text-[#253261]">{doc.name}</p>
-                          <p className="text-[11px] font-medium text-[#64729b]">{doc.date} · {doc.size}</p>
+                          <p className="truncate text-[13px] font-bold text-[#253261]">{d.document.name}</p>
+                          <p className="text-[11px] font-medium text-[#64729b]">{formatDate(d.document.createdAt)} · {(d.document.size / 1024).toFixed(0)} KB</p>
                         </div>
-                        <Button variant="outline" size="xs" leftIcon={<Download size={12} />}>Download</Button>
+                        <a href={`${API_BASE_URL}/documents/${d.document.id}/download`} target="_blank" rel="noreferrer">
+                          <Button variant="outline" size="xs" leftIcon={<Download size={12} />}>Download</Button>
+                        </a>
                       </div>
                     ))}
                   </div>
@@ -395,7 +380,7 @@ export function LoanDetailsPage() {
                   return (
                     <button
                       key={item.label} type="button"
-                      onClick={item.label === 'Add Loan Manually' ? () => navigate('/app/loans/add') : undefined}
+                      onClick={item.label === 'Add Loan Manually' ? () => navigate('/app/loans/add') : () => toast('Coming soon')}
                       className="flex w-full items-center gap-3 rounded-lg px-1.5 py-2 text-left transition-colors hover:bg-slate-50"
                     >
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${item.bg}`}>
@@ -405,7 +390,6 @@ export function LoanDetailsPage() {
                         <p className="text-[12px] font-bold text-[#253261]">{item.label}</p>
                         <p className="text-[11px] font-medium text-[#64729b]">{item.desc}</p>
                       </div>
-                      <ChevronRight size={14} className="shrink-0 text-slate-300" />
                     </button>
                   )
                 })}
@@ -422,7 +406,7 @@ export function LoanDetailsPage() {
               <p className="text-[12px] font-semibold leading-relaxed text-[#34406f]">
                 Have questions about your loan? Our support team is here to help.
               </p>
-              <Button variant="outline" size="sm" className="mt-3 w-full">Contact Support</Button>
+              <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => toast.success('Connecting you to support')}>Contact Support</Button>
             </Card>
           </aside>
         </div>

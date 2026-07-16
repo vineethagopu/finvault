@@ -9,6 +9,7 @@ const LandingPage = lazy(() => import('@/modules/public/LandingPage').then(m => 
 const LoginPage = lazy(() => import('@/modules/auth/LoginPage').then(m => ({ default: m.LoginPage })))
 const RegisterPage = lazy(() => import('@/modules/auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
 const CreateAccountPage = lazy(() => import('@/modules/auth/CreateAccountPage').then(m => ({ default: m.CreateAccountPage })))
+const CreateFamilyAccountPage = lazy(() => import('@/modules/auth/CreateFamilyAccountPage').then(m => ({ default: m.CreateFamilyAccountPage })))
 
 const DashboardPage = lazy(() => import('@/modules/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const MyPlanPage = lazy(() => import('@/modules/myplan/MyPlanPage').then(m => ({ default: m.MyPlanPage })))
@@ -68,7 +69,8 @@ export const router = createBrowserRouter([
       { path: '/', element: <SuspenseWrapper><LandingPage /></SuspenseWrapper> },
       { path: '/login', element: <SuspenseWrapper><LoginPage /></SuspenseWrapper> },
       { path: '/register', element: <SuspenseWrapper><RegisterPage /></SuspenseWrapper> },
-      { path: '/register/:planType', element: <SuspenseWrapper><CreateAccountPage /></SuspenseWrapper> },
+      { path: '/register/individual', element: <SuspenseWrapper><CreateAccountPage /></SuspenseWrapper> },
+      { path: '/register/family', element: <SuspenseWrapper><CreateFamilyAccountPage /></SuspenseWrapper> },
     ],
   },
 
@@ -84,12 +86,10 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: <SuspenseWrapper><DashboardPage /></SuspenseWrapper> },
           { path: 'my-plan', element: <SuspenseWrapper><MyPlanPage /></SuspenseWrapper> },
           { path: 'my-plan/premium-calendar', element: <SuspenseWrapper><MyPlanPage /></SuspenseWrapper> },
-          { path: 'my-plan/policy-details', element: <Navigate to="/app/my-plan/plan-details/pol-life" replace /> },
-          { path: 'my-plan/policy details', element: <Navigate to="/app/my-plan/plan-details/pol-life" replace /> },
           { path: 'my-plan/plan-details/:id', element: <SuspenseWrapper><PolicyDetailsPage /></SuspenseWrapper> },
 
           // Insurance
-          { path: 'insurance', element: <SuspenseWrapper><AddPolicyPage /></SuspenseWrapper> },
+          { path: 'insurance', element: <SuspenseWrapper><InsurancePage /></SuspenseWrapper> },
           { path: 'insurance/add', element: <SuspenseWrapper><AddPolicyPage /></SuspenseWrapper> },
           { path: 'insurance/:id', element: <SuspenseWrapper><PolicyDetailsPage /></SuspenseWrapper> },
 

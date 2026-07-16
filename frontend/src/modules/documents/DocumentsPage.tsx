@@ -1,69 +1,39 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, CreditCard, Eye, Download,
   FileImage, FileSpreadsheet, FileText, Files, FolderOpen, Headset, Info,
-  LayoutGrid, LayoutList, Lightbulb, Monitor, Cloud, HardDrive, Image, Clock,
-  MoreVertical, RotateCcw, Search, ShieldCheck, UploadCloud,
+  Lightbulb, RotateCcw, Search, ShieldCheck, UploadCloud,
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Modal } from '@/components/ui/Modal'
-
-type DocCategory = 'Policy Document' | 'Loan Document' | 'Other Document'
+import { formatDate } from '@/utils/formatters'
+import { documentService } from '@/services/documentService'
+import { API_BASE_URL } from '@/constants'
+import type { DocumentCategory } from '@/types'
 
 interface DocRow {
-  id: string
-  name: string
-  ext: 'pdf' | 'xlsx' | 'jpg' | 'png' | 'docx'
-  category: DocCategory
-  type: string
-  uploadedOn: string
-  linkedTo: string
+  id: string; name: string; mimeType: string; size: number
+  category: DocumentCategory; createdAt: string
+  linkedTo: string | null; docType: string | null
 }
 
-const DOCS: DocRow[] = [
-  { id: '1', name: 'Term Life Insurance Policy.pdf', ext: 'pdf', category: 'Policy Document', type: 'Policy Document', uploadedOn: '15 May 2025', linkedTo: 'Term Life Insurance' },
-  { id: '2', name: 'Health Insurance Policy.pdf', ext: 'pdf', category: 'Policy Document', type: 'Policy Document', uploadedOn: '12 May 2025', linkedTo: 'Health Insurance' },
-  { id: '3', name: 'Car Insurance Policy.pdf', ext: 'pdf', category: 'Policy Document', type: 'Policy Document', uploadedOn: '10 May 2025', linkedTo: 'Car Insurance' },
-  { id: '4', name: 'Home Loan Sanction Letter.pdf', ext: 'pdf', category: 'Loan Document', type: 'Sanction Letter', uploadedOn: '08 May 2025', linkedTo: 'Home Loan' },
-  { id: '5', name: 'Home Loan Statement - Apr 2025.pdf', ext: 'pdf', category: 'Loan Document', type: 'Loan Statement', uploadedOn: '05 May 2025', linkedTo: 'Home Loan' },
-  { id: '6', name: 'Personal Financial Statement.xlsx', ext: 'xlsx', category: 'Other Document', type: 'Financial Statement', uploadedOn: '02 May 2025', linkedTo: '--' },
-  { id: '7', name: 'PAN Card.jpg', ext: 'jpg', category: 'Other Document', type: 'ID Proof', uploadedOn: '28 Apr 2025', linkedTo: '--' },
-  { id: '8', name: 'Aadhaar Card.jpg', ext: 'jpg', category: 'Other Document', type: 'ID Proof', uploadedOn: '28 Apr 2025', linkedTo: '--' },
-]
-
-const STATS = [
-  { label: 'Total Documents', value: '28', sub: 'All Uploaded Documents', icon: Files, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { label: 'Policy Documents', value: '12', sub: 'Insurance related', icon: FileText, color: 'text-green-600', bg: 'bg-green-50' },
-  { label: 'Loan Documents', value: '8', sub: 'Loan related', icon: FolderOpen, color: 'text-amber-600', bg: 'bg-amber-50' },
-  { label: 'Other Documents', value: '8', sub: 'Other & personal', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
-]
-
-const CATEGORIES: DocCategory[] = ['Policy Document', 'Loan Document', 'Other Document']
-const DOC_TYPES = ['Policy Document', 'Sanction Letter', 'Loan Statement', 'Financial Statement', 'ID Proof']
-const DATE_RANGES = ['Last 7 days', 'Last 30 days', 'Last 90 days', 'This year']
-
-const CATEGORY_PILL: Record<DocCategory, string> = {
-  'Policy Document': 'bg-green-50 text-green-700',
-  'Loan Document': 'bg-amber-50 text-amber-700',
-  'Other Document': 'bg-blue-50 text-blue-700',
+const CATEGORIES: DocumentCategory[] = ['INSURANCE', 'INVESTMENT', 'LOAN', 'KYC', 'INCOME', 'TAX', 'OTHER']
+const CATEGORY_LABEL: Record<DocumentCategory, string> = {
+  INSURANCE: 'Insurance', INVESTMENT: 'Investment', LOAN: 'Loan', KYC: 'KYC', INCOME: 'Income', TAX: 'Tax', OTHER: 'Other',
+}
+const CATEGORY_PILL: Record<DocumentCategory, string> = {
+  INSURANCE: 'bg-green-50 text-green-700', INVESTMENT: 'bg-blue-50 text-blue-700', LOAN: 'bg-amber-50 text-amber-700',
+  KYC: 'bg-purple-50 text-purple-700', INCOME: 'bg-cyan-50 text-cyan-700', TAX: 'bg-red-50 text-red-700', OTHER: 'bg-slate-100 text-slate-600',
 }
 
-const EXT_ICON = {
-  pdf: { icon: FileText, color: 'text-red-500', bg: 'bg-red-50' },
-  xlsx: { icon: FileSpreadsheet, color: 'text-green-600', bg: 'bg-green-50' },
-  jpg: { icon: FileImage, color: 'text-blue-500', bg: 'bg-blue-50' },
-  png: { icon: FileImage, color: 'text-purple-500', bg: 'bg-purple-50' },
-  docx: { icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
+function fileIconFor(mimeType: string) {
+  if (mimeType.includes('pdf')) return { icon: FileText, color: 'text-red-500', bg: 'bg-red-50', label: 'PDF' }
+  if (mimeType.includes('sheet') || mimeType.includes('excel')) return { icon: FileSpreadsheet, color: 'text-green-600', bg: 'bg-green-50', label: 'XLS' }
+  if (mimeType.includes('image')) return { icon: FileImage, color: 'text-blue-500', bg: 'bg-blue-50', label: 'IMG' }
+  return { icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50', label: 'DOC' }
 }
-
-const SIDEBAR_CATEGORIES = [
-  { label: 'Policy Documents', count: 12, icon: FileText, color: 'text-green-600', bg: 'bg-green-50' },
-  { label: 'Loan Documents', count: 8, icon: FolderOpen, color: 'text-amber-600', bg: 'bg-amber-50' },
-  { label: 'Other Documents', count: 8, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
-  { label: 'ID Proofs', count: 2, icon: CreditCard, color: 'text-purple-600', bg: 'bg-purple-50' },
-]
 
 const TIPS = [
   'Upload clear and valid documents for faster processing.',
@@ -72,183 +42,53 @@ const TIPS = [
   'Your documents are secure and encrypted.',
 ]
 
-const BROWSE_FILES = [
-  { name: 'Term Life Insurance Policy.pdf', ext: 'pdf' as const, type: 'PDF', size: '1.2 MB', modified: '15 May 2025, 10:30 AM' },
-  { name: 'Health Insurance Policy.pdf', ext: 'pdf' as const, type: 'PDF', size: '2.4 MB', modified: '12 May 2025, 04:15 PM' },
-  { name: 'Home Loan Statement - Apr 2025.pdf', ext: 'pdf' as const, type: 'PDF', size: '1.8 MB', modified: '05 May 2025, 09:20 AM' },
-  { name: 'PAN Card.jpg', ext: 'jpg' as const, type: 'JPG', size: '0.9 MB', modified: '28 Apr 2025, 11:45 AM' },
-  { name: 'Aadhaar Card.jpg', ext: 'jpg' as const, type: 'JPG', size: '1.1 MB', modified: '28 Apr 2025, 11:45 AM' },
-  { name: 'Bank Statement - May 2025.png', ext: 'png' as const, type: 'PNG', size: '2.0 MB', modified: '20 Apr 2025, 03:10 PM' },
-  { name: 'Personal Financial Statement.xlsx', ext: 'xlsx' as const, type: 'XLSX', size: '1.3 MB', modified: '02 May 2025, 02:40 PM' },
-  { name: 'Income Proof.docx', ext: 'docx' as const, type: 'DOCX', size: '1.0 MB', modified: '30 Apr 2025, 05:25 PM' },
-]
-
-const QUICK_ACCESS = [
-  { label: 'Recent', icon: Clock },
-  { label: 'Desktop', icon: Monitor },
-  { label: 'Documents', icon: FileText },
-  { label: 'Downloads', icon: Download },
-  { label: 'Pictures', icon: Image },
-]
-
-const LOCATIONS = [
-  { label: 'This PC', icon: HardDrive },
-  { label: 'Google Drive', icon: Cloud },
-  { label: 'OneDrive', icon: Cloud },
-]
-
-function FileIcon({ ext, size = 15 }: { ext: keyof typeof EXT_ICON; size?: number }) {
-  const cfg = EXT_ICON[ext]
-  const Icon = cfg.icon
-  return (
-    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${cfg.bg}`}>
-      <Icon size={size} className={cfg.color} />
-    </div>
-  )
-}
-
-function BrowseFilesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [selected, setSelected] = useState<string[]>([])
-  const [query, setQuery] = useState('')
-  const [activeNav, setActiveNav] = useState('Recent')
-
-  const files = BROWSE_FILES.filter(f => f.name.toLowerCase().includes(query.toLowerCase()))
-
-  const toggle = (name: string) =>
-    setSelected(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name])
-
-  const handleOpen = () => {
-    toast.success(`${selected.length} file${selected.length > 1 ? 's' : ''} uploaded successfully!`)
-    setSelected([])
-    onClose()
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="Browse Files" description="Select files from your device to upload" size="full"
-      footer={
-        <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button
-            size="sm" disabled={selected.length === 0} onClick={handleOpen}
-            className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500 disabled:opacity-50"
-          >
-            Open
-          </Button>
-        </div>
-      }
-    >
-      <div className="grid gap-5 sm:grid-cols-[170px_1fr]">
-        <div className="space-y-5">
-          <div>
-            <p className="mb-2 text-[12px] font-extrabold text-[#11194f]">Quick Access</p>
-            <div className="space-y-0.5">
-              {QUICK_ACCESS.map(item => {
-                const Icon = item.icon
-                return (
-                  <button
-                    key={item.label} type="button" onClick={() => setActiveNav(item.label)}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold transition-colors ${activeNav === item.label ? 'bg-blue-50 text-blue-700' : 'text-[#34406f] hover:bg-slate-50'}`}
-                  >
-                    <Icon size={14} /> {item.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-          <div>
-            <p className="mb-2 text-[12px] font-extrabold text-[#11194f]">Locations</p>
-            <div className="space-y-0.5">
-              {LOCATIONS.map(item => {
-                const Icon = item.icon
-                return (
-                  <button
-                    key={item.label} type="button"
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-bold text-[#34406f] transition-colors hover:bg-slate-50"
-                  >
-                    <Icon size={14} /> {item.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[160px] flex-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={query} onChange={e => setQuery(e.target.value)}
-                placeholder="Search files..."
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-3 text-[12px] font-semibold text-slate-800 placeholder-slate-400 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
-              />
-            </div>
-            <p className="text-[12px] font-semibold text-[#64729b]">Sort by: <span className="font-bold text-[#253261]">Recently Modified</span></p>
-            <div className="flex items-center gap-1">
-              <button type="button" className="rounded p-1.5 text-blue-600 bg-blue-50"><LayoutList size={14} /></button>
-              <button type="button" className="rounded p-1.5 text-slate-400 hover:bg-slate-50"><LayoutGrid size={14} /></button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-left">
-              <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-bold text-[#34406f]">
-                  <th className="px-2 py-2">Name</th>
-                  <th className="px-2 py-2">Type</th>
-                  <th className="px-2 py-2">Size</th>
-                  <th className="whitespace-nowrap px-2 py-2">Modified</th>
-                </tr>
-              </thead>
-              <tbody>
-                {files.map(file => (
-                  <tr
-                    key={file.name} onClick={() => toggle(file.name)}
-                    className={`cursor-pointer text-[12px] transition-colors ${selected.includes(file.name) ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
-                  >
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-2">
-                        <FileIcon ext={file.ext} size={13} />
-                        <span className="font-bold text-[#253261]">{file.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-2 py-2 font-semibold text-[#64729b]">{file.type}</td>
-                    <td className="whitespace-nowrap px-2 py-2 font-semibold text-[#64729b]">{file.size}</td>
-                    <td className="whitespace-nowrap px-2 py-2 font-semibold text-[#64729b]">{file.modified}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2.5">
-            <Info size={13} className="shrink-0 text-blue-600" />
-            <p className="text-[11px] font-semibold text-[#253261]">
-              Supported formats: PDF, JPG, PNG, DOC, DOCX, XLS, XLSX&nbsp;&nbsp;|&nbsp;&nbsp;Max file size: 10MB
-            </p>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
 export function DocumentsPage() {
-  const [browseOpen, setBrowseOpen] = useState(false)
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
-  const [docType, setDocType] = useState('')
-  const [dateRange, setDateRange] = useState('')
   const [page, setPage] = useState(1)
   const [dragOver, setDragOver] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
-  const filtered = useMemo(() => DOCS.filter(doc =>
-    (!search || doc.name.toLowerCase().includes(search.toLowerCase()) || doc.type.toLowerCase().includes(search.toLowerCase())) &&
-    (!category || doc.category === category) &&
-    (!docType || doc.type === docType)
-  ), [search, category, docType])
+  const { data, isLoading } = useQuery({
+    queryKey: ['documents', page, category, search],
+    queryFn: async () => {
+      const res = await documentService.getAll({ page, limit: 20, category: category || undefined, search: search || undefined } as any)
+      return (res.data as any) as { data: DocRow[]; meta: { total: number; pages: number; byCategory: Record<string, number> } }
+    },
+  })
 
-  const resetFilters = () => { setSearch(''); setCategory(''); setDocType(''); setDateRange(''); setPage(1) }
+  const docs = data?.data ?? []
+  const meta = data?.meta
+
+  const stats = useMemo(() => {
+    const byCategory = meta?.byCategory ?? {}
+    const total = Object.values(byCategory).reduce((s, n) => s + n, 0)
+    return [
+      { label: 'Total Documents', value: String(total), sub: 'All Uploaded Documents', icon: Files, color: 'text-purple-600', bg: 'bg-purple-50' },
+      { label: 'Insurance Documents', value: String(byCategory.INSURANCE ?? 0), sub: 'Insurance related', icon: FileText, color: 'text-green-600', bg: 'bg-green-50' },
+      { label: 'Loan Documents', value: String(byCategory.LOAN ?? 0), sub: 'Loan related', icon: FolderOpen, color: 'text-amber-600', bg: 'bg-amber-50' },
+      { label: 'Other Documents', value: String((byCategory.KYC ?? 0) + (byCategory.OTHER ?? 0) + (byCategory.TAX ?? 0) + (byCategory.INCOME ?? 0)), sub: 'Other & personal', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
+    ]
+  }, [meta])
+
+  const resetFilters = () => { setSearch(''); setCategory(''); setPage(1) }
+
+  const uploadFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files)
+    if (list.length === 0) return
+    setUploading(true)
+    try {
+      await Promise.all(list.map(file => documentService.upload(file, { category: 'OTHER' })))
+      toast.success(`${list.length} file${list.length > 1 ? 's' : ''} uploaded successfully!`)
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+    } catch {
+      toast.error('Some files failed to upload')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <div className="min-h-full bg-white p-4 sm:p-5">
@@ -261,12 +101,6 @@ export function DocumentsPage() {
               <span className="text-slate-400">&gt;</span>
               <span className="text-[#11194f]">Documents</span>
             </nav>
-          </div>
-          <div className="hidden sm:flex items-center gap-4 pt-2">
-            <p className="text-xs font-bold text-[#34406f]">Last login: 18 May 2025, 11:25 AM</p>
-            <div className="flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
-              <ShieldCheck size={12} /> Secure Session
-            </div>
           </div>
         </div>
 
@@ -281,7 +115,7 @@ export function DocumentsPage() {
           <main className="space-y-4">
             <Card padding="sm" className="rounded-lg">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {STATS.map(stat => {
+                {stats.map(stat => {
                   const Icon = stat.icon
                   return (
                     <div key={stat.label} className="flex items-start gap-3">
@@ -305,7 +139,7 @@ export function DocumentsPage() {
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-                    placeholder="Search documents by name or type..."
+                    placeholder="Search documents by name..."
                     className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-8 pr-3 text-[12px] font-semibold text-slate-800 placeholder-slate-400 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
                   />
                 </div>
@@ -314,21 +148,7 @@ export function DocumentsPage() {
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] font-bold text-[#34406f] focus:border-green-500 focus:outline-none"
                 >
                   <option value="">All Categories</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <select
-                  value={docType} onChange={e => { setDocType(e.target.value); setPage(1) }}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] font-bold text-[#34406f] focus:border-green-500 focus:outline-none"
-                >
-                  <option value="">All Types</option>
-                  {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <select
-                  value={dateRange} onChange={e => setDateRange(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] font-bold text-[#34406f] focus:border-green-500 focus:outline-none"
-                >
-                  <option value="">All Dates</option>
-                  {DATE_RANGES.map(d => <option key={d} value={d}>{d}</option>)}
+                  {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
                 </select>
                 <Button variant="outline" size="sm" leftIcon={<RotateCcw size={13} />} onClick={resetFilters}>
                   Reset
@@ -347,67 +167,63 @@ export function DocumentsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {filtered.map(doc => (
-                      <tr key={doc.id} className="text-[13px]">
-                        <td className="px-3 py-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <FileIcon ext={doc.ext} />
-                            <span className="font-bold text-[#253261]">{doc.name}</span>
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3.5">
-                          <span className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${CATEGORY_PILL[doc.category]}`}>
-                            {doc.category}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{doc.type}</td>
-                        <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{doc.uploadedOn}</td>
-                        <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{doc.linkedTo}</td>
-                        <td className="whitespace-nowrap px-3 py-3.5">
-                          <div className="flex items-center gap-0.5 text-slate-400">
-                            <button type="button" title="View" className="rounded p-1.5 hover:bg-slate-50 hover:text-blue-600"><Eye size={15} /></button>
-                            <button type="button" title="Download" className="rounded p-1.5 hover:bg-slate-50 hover:text-green-600"><Download size={15} /></button>
-                            <button type="button" title="More" className="rounded p-1.5 hover:bg-slate-50"><MoreVertical size={15} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {filtered.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-10 text-center text-sm font-semibold text-[#64729b]">
-                          No documents match your filters.
-                        </td>
-                      </tr>
+                    {!isLoading && docs.length === 0 && (
+                      <tr><td colSpan={6} className="px-3 py-10 text-center text-sm font-semibold text-[#64729b]">No documents match your filters.</td></tr>
                     )}
+                    {docs.map(doc => {
+                      const fi = fileIconFor(doc.mimeType)
+                      const Icon = fi.icon
+                      return (
+                        <tr key={doc.id} className="text-[13px]">
+                          <td className="px-3 py-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${fi.bg}`}>
+                                <Icon size={15} className={fi.color} />
+                              </div>
+                              <span className="font-bold text-[#253261]">{doc.name}</span>
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3.5">
+                            <span className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${CATEGORY_PILL[doc.category]}`}>
+                              {CATEGORY_LABEL[doc.category]}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{doc.docType ?? '—'}</td>
+                          <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{formatDate(doc.createdAt)}</td>
+                          <td className="whitespace-nowrap px-3 py-3.5 font-semibold text-[#34406f]">{doc.linkedTo ?? '--'}</td>
+                          <td className="whitespace-nowrap px-3 py-3.5">
+                            <div className="flex items-center gap-0.5 text-slate-400">
+                              <a href={`${API_BASE_URL}/documents/${doc.id}/download`} target="_blank" rel="noreferrer" title="Download" className="rounded p-1.5 hover:bg-slate-50 hover:text-green-600 inline-block">
+                                <Download size={15} />
+                              </a>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-4">
-                <p className="text-[12px] font-semibold text-[#64729b]">Showing 1 to {filtered.length} of 28 documents</p>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
-                  {[1, 2, 3, 4].map(n => (
+              {meta && meta.pages > 1 && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-4">
+                  <p className="text-[12px] font-semibold text-[#64729b]">Page {page} of {meta.pages} ({meta.total} documents)</p>
+                  <div className="flex items-center gap-1.5">
                     <button
-                      key={n} type="button" onClick={() => setPage(n)}
-                      className={`h-8 w-8 rounded-lg text-[12px] font-bold transition-colors ${page === n ? 'bg-blue-600 text-white' : 'border border-slate-200 text-[#34406f] hover:bg-slate-50'}`}
+                      type="button" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
                     >
-                      {n}
+                      <ChevronLeft size={14} />
                     </button>
-                  ))}
-                  <button
-                    type="button" disabled={page === 4} onClick={() => setPage(p => Math.min(4, p + 1))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
-                  >
-                    <ChevronRight size={14} />
-                  </button>
+                    <button
+                      type="button" disabled={page === meta.pages} onClick={() => setPage(p => Math.min(meta.pages, p + 1))}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </Card>
 
             <Card padding="sm" className="rounded-lg">
@@ -419,7 +235,7 @@ export function DocumentsPage() {
                   <p className="text-sm font-extrabold text-[#11194f]">Need help managing your documents?</p>
                   <p className="text-[12px] font-semibold text-[#64729b]">Our support team is here to help you.</p>
                 </div>
-                <Button className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500" leftIcon={<Headset size={14} />}>
+                <Button className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500" leftIcon={<Headset size={14} />} onClick={() => toast.success('Connecting you to support')}>
                   Contact Support
                 </Button>
               </div>
@@ -432,7 +248,7 @@ export function DocumentsPage() {
               <div
                 onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
-                onDrop={e => { e.preventDefault(); setDragOver(false); toast.success('File received! (demo)') }}
+                onDrop={e => { e.preventDefault(); setDragOver(false); uploadFiles(e.dataTransfer.files) }}
                 className={`flex flex-col items-center rounded-lg border-2 border-dashed px-4 py-7 text-center transition-colors ${dragOver ? 'border-green-500 bg-green-50' : 'border-green-300 bg-green-50/40'}`}
               >
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-green-100">
@@ -440,9 +256,14 @@ export function DocumentsPage() {
                 </div>
                 <p className="text-[12px] font-bold text-[#253261]">Drag &amp; drop your file here</p>
                 <p className="my-1.5 text-[11px] font-semibold text-[#64729b]">or</p>
-                <Button size="sm" leftIcon={<FolderOpen size={13} />} onClick={() => setBrowseOpen(true)}>
+                <Button size="sm" leftIcon={<FolderOpen size={13} />} loading={uploading} onClick={() => fileInputRef.current?.click()}>
                   Browse Files
                 </Button>
+                <input
+                  ref={fileInputRef} type="file" multiple className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                  onChange={e => { if (e.target.files) uploadFiles(e.target.files); e.target.value = '' }}
+                />
               </div>
               <p className="mt-3 text-[10px] font-semibold leading-relaxed text-[#64729b]">
                 Supported formats: PDF, JPG, PNG, DOC, DOCX, XLS, XLSX<br />Max file size: 10MB
@@ -452,20 +273,13 @@ export function DocumentsPage() {
             <Card padding="sm" className="rounded-lg">
               <h3 className="mb-3 text-sm font-extrabold text-[#11194f]">Document Categories</h3>
               <div className="space-y-3">
-                {SIDEBAR_CATEGORIES.map(item => {
-                  const Icon = item.icon
-                  return (
-                    <div key={item.label} className="flex items-center gap-3">
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${item.bg}`}>
-                        <Icon size={15} className={item.color} />
-                      </div>
-                      <span className="flex-1 text-[12px] font-bold text-[#253261]">{item.label}</span>
-                      <span className="text-[12px] font-extrabold text-[#11194f]">{item.count}</span>
-                    </div>
-                  )
-                })}
+                {CATEGORIES.map(c => (
+                  <div key={c} className="flex items-center gap-3">
+                    <span className={`flex-1 text-[12px] font-bold text-[#253261]`}>{CATEGORY_LABEL[c]}</span>
+                    <span className="text-[12px] font-extrabold text-[#11194f]">{meta?.byCategory?.[c] ?? 0}</span>
+                  </div>
+                ))}
               </div>
-              <Button variant="outline" size="sm" className="mt-4 w-full">View All Categories</Button>
             </Card>
 
             <Card padding="sm" className="rounded-lg">
@@ -481,15 +295,10 @@ export function DocumentsPage() {
                   </li>
                 ))}
               </ul>
-              <button type="button" className="mt-3 inline-flex items-center gap-1 text-[12px] font-bold text-green-700 hover:underline">
-                Learn more about document security <ArrowRight size={12} />
-              </button>
             </Card>
           </aside>
         </div>
       </div>
-
-      <BrowseFilesModal open={browseOpen} onClose={() => setBrowseOpen(false)} />
     </div>
   )
 }

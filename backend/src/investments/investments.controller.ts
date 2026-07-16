@@ -12,6 +12,8 @@ export class InvestmentsController {
   constructor(private service: InvestmentsService) {}
 
   @Get() findAll(@CurrentUser('id') uid: string, @Query() q: any) { return this.service.findAll(uid, q) }
+  @Get('overview') getOverview(@CurrentUser('id') uid: string) { return this.service.getOverview(uid) }
+  @Get('performance') getPerformance(@CurrentUser('id') uid: string) { return this.service.getPerformance(uid) }
   @Get(':id') findOne(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.findOne(uid, id) }
   @Post() create(@CurrentUser('id') uid: string, @Body() dto: any) { return this.service.create(uid, dto) }
   @Patch(':id') update(@CurrentUser('id') uid: string, @Param('id') id: string, @Body() dto: any) { return this.service.update(uid, id, dto) }

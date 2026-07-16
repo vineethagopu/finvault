@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Plus, Shield, Search, Filter, MoreVertical, ChevronRight, Bell, ShoppingBag, Download, Eye, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -7,37 +8,14 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { StatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { formatCurrency, formatDate, daysFromNow } from '@/utils/formatters'
+import { DashboardSkeleton } from '@/components/ui/Skeleton'
+import { formatCurrency, formatDate, formatDateTime, daysFromNow } from '@/utils/formatters'
 import { INSURANCE_TYPES } from '@/constants'
-
-const MOCK_POLICIES = [
-  {
-    id: '1', policyName: 'Term Life Insurance', insuranceType: 'LIFE', insuranceProvider: 'HDFC Life', policyNumber: '1234 5678 9012',
-    sumInsured: 10000000, annualPremium: 12000, status: 'ACTIVE', nextPremiumDueDate: '2025-05-25', policyStartDate: '2025-05-25', policyEndDate: '2045-05-24',
-    planType: 'Term Plan'
-  },
-  {
-    id: '2', policyName: 'Car Insurance', insuranceType: 'VEHICLE', insuranceProvider: 'Bajaj Allianz', policyNumber: '9876 5432 1098',
-    sumInsured: 750000, annualPremium: 6500, status: 'ACTIVE', nextPremiumDueDate: '2025-08-15', policyStartDate: '2025-05-30', policyEndDate: '2026-05-29',
-    planType: 'Comprehensive'
-  },
-  {
-    id: '3', policyName: 'Annual Travel Insurance', insuranceType: 'TRAVEL', insuranceProvider: 'ICICI Lombard', policyNumber: '5566 7788 1122',
-    sumInsured: 500000, annualPremium: 2000, status: 'ACTIVE', nextPremiumDueDate: '2026-03-12', policyStartDate: '2025-06-02', policyEndDate: '2026-06-01',
-    planType: 'Annual Multi-Trip'
-  },
-  {
-    id: '4', policyName: 'Health Insurance', insuranceType: 'HEALTH', insuranceProvider: 'Star Health Insurance', policyNumber: '4455 6677 8899',
-    sumInsured: 3750000, annualPremium: 3500, status: 'ACTIVE', nextPremiumDueDate: '2025-12-01', policyStartDate: '2025-05-30', policyEndDate: '2026-05-29',
-    planType: 'Family Floater'
-  },
-]
+import { policyService } from '@/services/policyService'
+import { useAuthStore } from '@/store/authStore'
+import type { Policy } from '@/types'
 
 const TABS = ['My Policies', 'Policy Applications', 'Riders', 'Claims']
-
-const INSURER_COLORS: Record<string, string> = {
-  'HDFC Life': '#dc2626', 'Bajaj Allianz': '#1d4ed8', 'ICICI Lombard': '#7c3aed', 'Star Health Insurance': '#d97706'
-}
 
 export function InsurancePage() {
   const [activeTab, setActiveTab] = useState('My Policies')
@@ -46,17 +24,32 @@ export function InsurancePage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { user } = useAuthStore()
 
-  const filtered = MOCK_POLICIES.filter(p => {
-    const matchSearch = !search || p.policyName.toLowerCase().includes(search.toLowerCase()) || p.insuranceProvider.toLowerCase().includes(search.toLowerCase())
+  const { data: policies = [], isLoading } = useQuery({
+    queryKey: ['policies'],
+    queryFn: async () => {
+      const res = await policyService.getAll()
+      return ((res.data as any).data ?? []) as Policy[]
+    },
+  })
+
+  const filtered = policies.filter(p => {
+    const matchSearch = !search || p.policyName.toLowerCase().includes(search.toLowerCase()) || p.provider.toLowerCase().includes(search.toLowerCase())
     const matchType = !typeFilter || p.insuranceType === typeFilter
     const matchStatus = !statusFilter || p.status === statusFilter
     return matchSearch && matchType && matchStatus
   })
 
-  const totalSumAssured = filtered.reduce((s, p) => s + p.sumInsured, 0)
-  const totalPremium = filtered.reduce((s, p) => s + p.annualPremium, 0)
-  const expiringCount = filtered.filter(p => daysFromNow(p.nextPremiumDueDate) <= 30).length
+  const totalSumAssured = filtered.reduce((s, p) => s + Number(p.sumAssured), 0)
+  const totalPremium = filtered.reduce((s, p) => s + Number(p.premiumAmount), 0)
+  const expiringCount = filtered.filter(p => p.nextPremiumDate && daysFromNow(p.nextPremiumDate) <= 30).length
+  const nextDueDate = filtered
+    .map(p => p.nextPremiumDate)
+    .filter((d): d is string => !!d)
+    .sort()[0]
+
+  if (isLoading) return <DashboardSkeleton />
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-[1600px] mx-auto">
@@ -68,7 +61,7 @@ export function InsurancePage() {
             <p className="text-sm text-slate-500 mt-0.5">View and manage all your insurance policies in one place.</p>
           </div>
           <div className="hidden sm:flex flex-col items-end gap-1 text-xs text-slate-500">
-            <span>Last login: 18 May 2025, 11:25 AM</span>
+            <span>Last login: {user?.lastLogin ? formatDateTime(user.lastLogin) : '—'}</span>
             <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded-full font-medium">
               <Shield size={10} /> Secure Session
             </div>
@@ -110,7 +103,7 @@ export function InsurancePage() {
             <div>
               <p className="text-xs text-slate-500">Total Annual Premium</p>
               <p className="text-xl font-bold text-slate-900">{formatCurrency(totalPremium)}</p>
-              <p className="text-[11px] text-orange-600 font-medium">Next Due: 25 May 2025</p>
+              <p className="text-[11px] text-orange-600 font-medium">Next Due: {nextDueDate ? formatDate(nextDueDate) : '—'}</p>
             </div>
           </div>
         </Card>
@@ -197,7 +190,7 @@ export function InsurancePage() {
                 <div className="space-y-3">
                   {filtered.map((policy) => {
                     const typeInfo = INSURANCE_TYPES.find(t => t.value === policy.insuranceType)
-                    const days = daysFromNow(policy.nextPremiumDueDate)
+                    const days = policy.nextPremiumDate ? daysFromNow(policy.nextPremiumDate) : Infinity
                     const isDueSoon = days <= 30
                     return (
                       <div
@@ -213,24 +206,24 @@ export function InsurancePage() {
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-slate-900">{policy.policyName}</p>
-                              <p className="text-xs text-slate-500">{policy.insuranceProvider}</p>
-                              <p className="text-xs text-slate-400">Policy No: {policy.policyNumber}</p>
+                              <p className="text-xs text-slate-500">{policy.provider}</p>
+                              <p className="text-xs text-slate-400">Policy No: {policy.policyNumber ?? '—'}</p>
                             </div>
                             <StatusBadge status={policy.status} />
                           </div>
                         </div>
                         <div className="hidden sm:flex flex-col items-end gap-1 min-w-[120px]">
                           <p className="text-[10px] text-slate-400 uppercase">Sum Insured</p>
-                          <p className="text-sm font-bold text-slate-800">{formatCurrency(policy.sumInsured)}</p>
+                          <p className="text-sm font-bold text-slate-800">{formatCurrency(Number(policy.sumAssured))}</p>
                         </div>
                         <div className="hidden md:flex flex-col items-end gap-1 min-w-[100px]">
                           <p className="text-[10px] text-slate-400 uppercase">Annual Premium</p>
-                          <p className="text-sm font-bold text-slate-800">{formatCurrency(policy.annualPremium)}</p>
+                          <p className="text-sm font-bold text-slate-800">{formatCurrency(Number(policy.premiumAmount))}</p>
                         </div>
                         <div className="hidden lg:flex flex-col items-end gap-1 min-w-[120px]">
                           <p className="text-[10px] text-slate-400 uppercase">Next Due</p>
                           <p className={`text-sm font-semibold ${isDueSoon ? 'text-orange-600' : 'text-slate-700'}`}>
-                            {formatDate(policy.nextPremiumDueDate)}
+                            {policy.nextPremiumDate ? formatDate(policy.nextPremiumDate) : '—'}
                           </p>
                           {isDueSoon && <p className="text-[10px] text-orange-500">(In {days} days)</p>}
                         </div>

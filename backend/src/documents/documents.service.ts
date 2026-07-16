@@ -32,7 +32,7 @@ export class DocumentsService {
       where.name = { contains: filters.search, mode: 'insensitive' }
     }
 
-    const [data, total] = await this.prisma.$transaction([
+    const [data, total, categoryCounts] = await this.prisma.$transaction([
       this.prisma.document.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -42,10 +42,13 @@ export class DocumentsService {
           id: true, name: true, mimeType: true, size: true,
           category: true, tags: true, scanStatus: true,
           createdAt: true, updatedAt: true,
+          policyDocuments: { select: { docType: true, policy: { select: { policyName: true } } }, take: 1 },
+          loanDocuments: { select: { docType: true, loan: { select: { loanName: true } } }, take: 1 },
           // s3Key / s3Bucket never returned to client
         },
       }),
       this.prisma.document.count({ where }),
+      this.prisma.document.groupBy({ by: ['category'], where: { userId }, _count: true, orderBy: { category: 'asc' } }),
     ])
 
     const storageUsed = await this.prisma.document.aggregate({
@@ -53,12 +56,24 @@ export class DocumentsService {
       _sum: { size: true },
     })
 
+    const linked = data.map((doc) => {
+      const { policyDocuments, loanDocuments, ...rest } = doc
+      const link = policyDocuments[0]
+        ? { linkedTo: policyDocuments[0].policy.policyName, docType: policyDocuments[0].docType }
+        : loanDocuments[0]
+          ? { linkedTo: loanDocuments[0].loan.loanName, docType: loanDocuments[0].docType }
+          : { linkedTo: null, docType: null }
+      return { ...rest, ...link }
+    })
+
     return {
-      data,
+      data: linked,
       meta: {
         total, page, limit,
         pages: Math.ceil(total / limit),
         storageUsedBytes: Number(storageUsed._sum.size || 0),
+        totalAll: total,
+        byCategory: Object.fromEntries(categoryCounts.map((c) => [c.category, c._count])),
       },
     }
   }
@@ -94,6 +109,12 @@ export class DocumentsService {
         s3Bucket: 'local',     // 'local' sentinel for non-S3 environments
         isEncrypted: false,
         scanStatus: 'CLEAN',
+        ...(dto.policyId && {
+          policyDocuments: { create: { policyId: dto.policyId, docType: dto.docType } },
+        }),
+        ...(dto.loanId && {
+          loanDocuments: { create: { loanId: dto.loanId, docType: dto.docType } },
+        }),
       },
     })
 

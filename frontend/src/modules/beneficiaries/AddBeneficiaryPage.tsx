@@ -11,11 +11,17 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { useQuery } from '@tanstack/react-query'
+import { policyService } from '@/services/policyService'
+import { beneficiaryService } from '@/services/beneficiaryService'
+import type { Policy } from '@/types'
+import toast from 'react-hot-toast'
 
+// Real BeneficiaryType enum values (backend/prisma/schema.prisma).
 const BENEFICIARY_TYPES = [
   { value: 'NOMINEE', label: 'Nominee', desc: 'For policy claims & legal purposes', icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { value: 'SHAREHOLDER', label: 'Shareholder', desc: 'For company shares and ownership', icon: ChartPie, color: 'text-green-600', bg: 'bg-green-50' },
-  { value: 'ACCOUNT_HOLDER', label: 'Account/Asset Holder', desc: 'For bank accounts, deposits, mutual funds, etc.', icon: Landmark, color: 'text-amber-600', bg: 'bg-amber-50' },
+  { value: 'LEGAL_HEIR', label: 'Legal Heir', desc: 'For legal inheritance of assets', icon: ChartPie, color: 'text-green-600', bg: 'bg-green-50' },
+  { value: 'ASSIGNEE', label: 'Assignee', desc: 'For assigned accounts, deposits, mutual funds, etc.', icon: Landmark, color: 'text-amber-600', bg: 'bg-amber-50' },
   { value: 'OTHER', label: 'Other Beneficiary', desc: 'For any other assets or properties', icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50' },
 ]
 
@@ -47,6 +53,7 @@ const schema = z.object({
   pan: z.string().optional(),
   sharePercentage: z.string().min(1, 'Share percentage is required'),
   fixedAmount: z.string().optional(),
+  policyId: z.string().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   pinCode: z.string().optional(),
@@ -106,24 +113,22 @@ function ImportantNotes() {
   )
 }
 
-function AllocationSummary() {
+function AllocationSummary({ totalShare }: { totalShare: number }) {
+  const remaining = Math.max(0, 100 - totalShare)
   return (
     <Card padding="sm" className="rounded-lg">
       <h3 className="mb-3 text-sm font-extrabold text-[#11194f]">Current Allocation Summary</h3>
       <div className="mb-1.5 flex items-center justify-between">
         <p className="text-[12px] font-semibold text-[#64729b]">Total Allocation</p>
-        <p className="text-[12px] font-extrabold text-[#11194f]">{ALLOCATION.total}%</p>
+        <p className="text-[12px] font-extrabold text-[#11194f]">{totalShare}%</p>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-        <div className="h-full rounded-full bg-green-500" style={{ width: `${ALLOCATION.total}%` }} />
+        <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.min(100, totalShare)}%` }} />
       </div>
       <div className="mt-3 flex items-center justify-between">
         <p className="text-[12px] font-semibold text-[#64729b]">Remaining Allocation</p>
-        <p className="text-[12px] font-extrabold text-[#11194f]">{ALLOCATION.remaining}%</p>
+        <p className="text-[12px] font-extrabold text-[#11194f]">{remaining}%</p>
       </div>
-      <button type="button" className="mt-4 inline-flex items-center gap-1 text-[12px] font-bold text-green-700 hover:underline">
-        View All Beneficiaries <ArrowRight size={12} />
-      </button>
     </Card>
   )
 }
@@ -131,6 +136,23 @@ function AllocationSummary() {
 export function AddBeneficiaryPage() {
   const navigate = useNavigate()
   const [saved, setSaved] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  const { data: policies = [] } = useQuery({
+    queryKey: ['policies'],
+    queryFn: async () => {
+      const res = await policyService.getAll()
+      return ((res.data as any).data ?? []) as Policy[]
+    },
+  })
+  const { data: existingBeneficiaries = [] } = useQuery({
+    queryKey: ['beneficiaries'],
+    queryFn: async () => {
+      const res = await beneficiaryService.getAll()
+      return ((res.data as any).data ?? []) as { sharePercent: number }[]
+    },
+  })
+  const totalShare = existingBeneficiaries.reduce((s, b) => s + Number(b.sharePercent), 0)
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -138,7 +160,29 @@ export function AddBeneficiaryPage() {
   })
 
   const selectedType = watch('beneficiaryType')
-  const onSubmit = handleSubmit(() => setSaved(true))
+  const onSubmit = handleSubmit(async (data) => {
+    setSubmitting(true)
+    try {
+      await beneficiaryService.create({
+        type: data.beneficiaryType as any,
+        fullName: data.fullName,
+        dateOfBirth: data.dob,
+        relationship: data.relationship,
+        email: data.email || undefined,
+        mobile: data.mobile,
+        pan: data.pan || undefined,
+        sharePercent: Number(data.sharePercentage),
+        address: [data.address, data.city, data.pinCode].filter(Boolean).join(', ') || undefined,
+        policyId: data.policyId || undefined,
+      } as any)
+      setSaved(true)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error(err.response?.data?.message || 'Failed to add beneficiary')
+    } finally {
+      setSubmitting(false)
+    }
+  })
   const dobField = register('dob')
 
   if (saved) {
@@ -258,6 +302,12 @@ export function AddBeneficiaryPage() {
               </SectionCard>
 
               <SectionCard title="3. Share / Allocation Details">
+                <div className="mb-4">
+                  <Select label="Link to Policy (Optional)" {...register('policyId')}>
+                    <option value="">Not linked to a specific policy</option>
+                    {policies.map(p => <option key={p.id} value={p.id}>{p.policyName}</option>)}
+                  </Select>
+                </div>
                 <div className="grid items-end gap-4 sm:grid-cols-[1fr_auto_1fr]">
                   <Input
                     label="Share Percentage (%)" required type="number" min="0" max="100"
@@ -298,7 +348,7 @@ export function AddBeneficiaryPage() {
                 <Button type="button" variant="outline" leftIcon={<ArrowLeft size={15} />} onClick={() => navigate('/app/beneficiaries')}>
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500">
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500" loading={submitting}>
                   Save Beneficiary
                 </Button>
               </div>
@@ -308,7 +358,7 @@ export function AddBeneficiaryPage() {
           <aside className="space-y-3">
             <WhyAddBeneficiaries />
             <ImportantNotes />
-            <AllocationSummary />
+            <AllocationSummary totalShare={totalShare} />
           </aside>
         </div>
       </div>

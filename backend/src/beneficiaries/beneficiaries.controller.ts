@@ -12,6 +12,7 @@ export class BeneficiariesController {
   constructor(private service: BeneficiariesService) {}
 
   @Get() findAll(@CurrentUser('id') uid: string) { return this.service.findAll(uid) }
+  @Get('summary') getSummary(@CurrentUser('id') uid: string) { return this.service.getSummary(uid) }
   @Post() create(@CurrentUser('id') uid: string, @Body() dto: any) { return this.service.create(uid, dto) }
   @Patch(':id') update(@CurrentUser('id') uid: string, @Param('id') id: string, @Body() dto: any) { return this.service.update(uid, id, dto) }
   @Delete(':id') @HttpCode(HttpStatus.OK) remove(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.remove(uid, id) }

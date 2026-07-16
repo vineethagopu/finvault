@@ -20,6 +20,9 @@ export const loanService = {
   getEligibility: () =>
     api.get('/loans/eligibility'),
 
-  getStatement: (id: string) =>
-    api.get(`/loans/${id}/statement`),
+  getDocuments: (id: string) =>
+    api.get(`/loans/${id}/documents`),
+
+  getTransactions: (id: string) =>
+    api.get(`/loans/${id}/transactions`),
 }

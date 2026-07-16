@@ -131,4 +131,73 @@ export class PoliciesService {
     if (!policy) throw new ForbiddenException('Access denied')
     return policy
   }
+
+  async getAllPolicyDocuments(userId: string) {
+    const links = await this.prisma.policyDocument.findMany({
+      where: { policy: { userId } },
+      include: {
+        document: true,
+        policy: { select: { id: true, policyName: true, provider: true, policyNumber: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    return { data: links }
+  }
+
+  async getPolicyDocuments(userId: string, policyId: string) {
+    await this.assertOwnership(userId, policyId)
+    const links = await this.prisma.policyDocument.findMany({
+      where: { policyId },
+      include: { document: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    return { data: links }
+  }
+
+  async getPolicyPayments(userId: string, policyId: string) {
+    await this.assertOwnership(userId, policyId)
+    const payments = await this.prisma.premiumPayment.findMany({
+      where: { policyId },
+      orderBy: { dueDate: 'desc' },
+    })
+    return { data: payments }
+  }
+
+  async addNominee(userId: string, policyId: string, dto: any) {
+    await this.assertOwnership(userId, policyId)
+    const nominee = await this.prisma.nominee.create({
+      data: {
+        policyId,
+        fullName: dto.fullName,
+        relationship: dto.relationship,
+        dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+        sharePercent: dto.sharePercent,
+        mobile: dto.mobile,
+        email: dto.email,
+        address: dto.address,
+      },
+    })
+    return { data: nominee, message: 'Nominee added' }
+  }
+
+  async updateNominee(userId: string, policyId: string, nomineeId: string, dto: any) {
+    await this.assertOwnership(userId, policyId)
+    const existing = await this.prisma.nominee.findFirst({ where: { id: nomineeId, policyId } })
+    if (!existing) throw new NotFoundException('Nominee not found')
+
+    const { dateOfBirth, ...rest } = dto
+    const nominee = await this.prisma.nominee.update({
+      where: { id: nomineeId },
+      data: { ...rest, ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }) },
+    })
+    return { data: nominee, message: 'Nominee updated' }
+  }
+
+  async removeNominee(userId: string, policyId: string, nomineeId: string) {
+    await this.assertOwnership(userId, policyId)
+    const existing = await this.prisma.nominee.findFirst({ where: { id: nomineeId, policyId } })
+    if (!existing) throw new NotFoundException('Nominee not found')
+    await this.prisma.nominee.delete({ where: { id: nomineeId } })
+    return { message: 'Nominee removed' }
+  }
 }

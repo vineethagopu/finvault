@@ -19,6 +19,7 @@ services:
       context: ./backend
       target: builder
     command: npm run start:dev
+    tty: true
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-policynext}:${POSTGRES_PASSWORD:-dev_password}@postgres:5432/${POSTGRES_DB:-policynext}?schema=public
@@ -44,9 +45,28 @@ services:
     networks:
       - internal
 
+  frontend:
+    build:
+      context: ./frontend
+      target: builder
+    command: sh -c "npm run dev -- --host 0.0.0.0"
+    tty: true
+    environment:
+      VITE_API_URL: http://localhost:3000/api/v1
+    volumes:
+      - ./frontend/src:/app/src:delegated
+      - ./frontend/index.html:/app/index.html:delegated
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - internal
+
 volumes:
   uploads_dev:
 
 networks:
   internal:
     driver: bridge
+    internal: false

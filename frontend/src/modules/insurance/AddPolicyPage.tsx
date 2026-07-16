@@ -1,5 +1,8 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import {
   ArrowLeft, ArrowRight, Calendar, Check, CheckCircle2, ChevronDown, CloudUpload,
   Download, Edit3, FileText, Info, Lock, Plus, Shield, Trash2, User, Users,
@@ -8,6 +11,11 @@ import {
 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import { INSURANCE_TYPES } from '@/constants'
+import { policyService } from '@/services/policyService'
+import { documentService } from '@/services/documentService'
+import { formatCurrency } from '@/utils/formatters'
 import toast from 'react-hot-toast'
 
 const STEPS = [
@@ -25,71 +33,47 @@ const WHY_REASONS = [
   'Access policy documents anytime',
 ]
 
-const DOCS = [
-  { icon: Shield, color: 'text-green-600', bg: 'bg-green-50', type: 'Policy Document', description: 'Upload the complete policy document', mandatory: true },
-  { icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', type: 'Premium Payment Proof', description: 'Upload receipt or proof of premium payment', mandatory: true },
-  { icon: IdCard, color: 'text-purple-600', bg: 'bg-purple-50', type: 'Identity Proof', description: 'PAN Card, Aadhaar Card, Passport, etc.', mandatory: true },
-  { icon: MapPin, color: 'text-amber-600', bg: 'bg-amber-50', type: 'Address Proof', description: 'Aadhaar Card, Bank Passbook, Utility Bill, etc.', mandatory: true },
-  { icon: FileHeart, color: 'text-pink-600', bg: 'bg-pink-50', type: 'Nominee Proof (If Any)', description: 'Nominee identity proof (if available)', mandatory: false },
-  { icon: HeartPulse, color: 'text-cyan-600', bg: 'bg-cyan-50', type: 'Medical Report (If Any)', description: 'Upload medical report (if applicable)', mandatory: false },
-  { icon: FileText, color: 'text-orange-600', bg: 'bg-orange-50', type: 'Any Other Document (Optional)', description: 'Any other supporting document', mandatory: false },
+const DOC_TYPES = [
+  { key: 'policy', icon: Shield, color: 'text-green-600', bg: 'bg-green-50', type: 'Policy Document', description: 'Upload the complete policy document', mandatory: true },
+  { key: 'premium', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', type: 'Premium Payment Proof', description: 'Upload receipt or proof of premium payment', mandatory: true },
+  { key: 'identity', icon: IdCard, color: 'text-purple-600', bg: 'bg-purple-50', type: 'Identity Proof', description: 'PAN Card, Aadhaar Card, Passport, etc.', mandatory: true },
+  { key: 'address', icon: MapPin, color: 'text-amber-600', bg: 'bg-amber-50', type: 'Address Proof', description: 'Aadhaar Card, Bank Passbook, Utility Bill, etc.', mandatory: true },
+  { key: 'nominee', icon: FileHeart, color: 'text-pink-600', bg: 'bg-pink-50', type: 'Nominee Proof (If Any)', description: 'Nominee identity proof (if available)', mandatory: false },
+  { key: 'medical', icon: HeartPulse, color: 'text-cyan-600', bg: 'bg-cyan-50', type: 'Medical Report (If Any)', description: 'Upload medical report (if applicable)', mandatory: false },
+  { key: 'other', icon: FileText, color: 'text-orange-600', bg: 'bg-orange-50', type: 'Any Other Document (Optional)', description: 'Any other supporting document', mandatory: false },
 ]
 
-type FieldProps = {
-  label: string
-  placeholder?: string
-  required?: boolean
-  type?: 'input' | 'select' | 'date' | 'textarea'
-  value?: string
-  prefix?: React.ReactNode
-  suffix?: React.ReactNode
-  hint?: string
-  wide?: boolean
+const POLICY_TERMS = ['5 Years', '10 Years', '15 Years', '20 Years', '25 Years', '30 Years']
+const PAYMENT_FREQUENCIES = ['ANNUAL', 'HALF_YEARLY', 'QUARTERLY', 'MONTHLY']
+const POLICY_STATUSES = ['ACTIVE', 'PENDING', 'LAPSED']
+
+const policySchema = z.object({
+  insuranceType: z.string().min(1, 'Insurance type is required'),
+  policyName: z.string().min(2, 'Policy name is required'),
+  planName: z.string().optional(),
+  provider: z.string().min(1, 'Insurance provider is required'),
+  policyNumber: z.string().optional(),
+  policyStartDate: z.string().min(1, 'Start date is required'),
+  policyEndDate: z.string().min(1, 'End/maturity date is required'),
+  policyTerm: z.string().optional(),
+  sumAssured: z.string().min(1, 'Sum assured is required'),
+  premiumAmount: z.string().min(1, 'Premium amount is required'),
+  premiumFrequency: z.string().optional(),
+  status: z.string().optional(),
+  notes: z.string().optional(),
+})
+
+type PolicyFormData = z.infer<typeof policySchema>
+
+interface NomineeForm {
+  fullName: string
+  relationship: string
+  dateOfBirth: string
+  sharePercent: string
+  email: string
 }
 
-function Field({ label, placeholder, required, type = 'input', value, prefix, suffix, hint, wide }: FieldProps) {
-  const base = 'w-full h-9 rounded-md border border-slate-200 bg-white px-3 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500'
-  return (
-    <div className={wide ? 'lg:col-span-2' : ''}>
-      <label className="mb-1.5 block text-[11px] font-semibold text-[#11194f]">
-        {label}{required && <span className="text-red-500"> *</span>}
-      </label>
-      <div className="relative">
-        {prefix && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{prefix}</div>}
-        {type === 'select' ? (
-          <>
-            <select className={`${base} appearance-none ${prefix ? 'pl-8' : ''} ${suffix ? 'pr-8' : ''}`} value={value ?? ''} onChange={() => {}}>
-              {value ? <option value={value}>{value}</option> : <option value="">{placeholder}</option>}
-              <option>Term Life Insurance</option>
-              <option>HDFC Life</option>
-              <option>Spouse</option>
-              <option>Son</option>
-              <option>20 Years</option>
-              <option>15 Years</option>
-              <option>Yearly</option>
-              <option>Active</option>
-              <option>Yes</option>
-              <option>No</option>
-            </select>
-            <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          </>
-        ) : type === 'textarea' ? (
-          <textarea className={`${base} h-[62px] resize-none py-2 ${prefix ? 'pl-8' : ''}`} placeholder={placeholder} defaultValue={value} />
-        ) : (
-          <input
-            className={`${base} ${prefix ? 'pl-8' : ''} ${suffix ? 'pr-8' : ''}`}
-            type={type === 'date' ? 'text' : 'text'}
-            placeholder={placeholder}
-            defaultValue={value}
-          />
-        )}
-        {type === 'date' && <Calendar size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />}
-        {suffix && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">{suffix}</div>}
-      </div>
-      {hint && <p className="mt-1 text-[10px] text-slate-500">{hint}</p>}
-    </div>
-  )
-}
+const EMPTY_NOMINEE: NomineeForm = { fullName: '', relationship: '', dateOfBirth: '', sharePercent: '', email: '' }
 
 function FlowStepper({ step, onStepClick }: { step: number; onStepClick: (step: number) => void }) {
   return (
@@ -152,24 +136,27 @@ function WhyPanel({ step }: { step: number }) {
   )
 }
 
-function SnapshotPanel({ variant }: { variant: 'nominee' | 'docs' | 'review' }) {
+function SnapshotPanel({ variant, form, nominees }: {
+  variant: 'nominee' | 'docs' | 'review'
+  form: PolicyFormData
+  nominees: NomineeForm[]
+}) {
   const review = variant === 'review'
-  const rows = review
+  const typeLabel = INSURANCE_TYPES.find(t => t.value === form.insuranceType)?.label ?? form.insuranceType
+  const rows: [React.ElementType, string, string, string, string][] = review
     ? [
-        [ClipboardList, 'Policy Name', 'Term Life Insurance', 'text-green-600', 'bg-green-50'],
-        [User, 'Insured', 'Rajat Sharma', 'text-green-600', 'bg-green-50'],
-        [Shield, 'Sum Assured', '\u20b9 10,00,000', 'text-green-600', 'bg-green-50'],
-        [Calendar, 'Policy Term', '20 Years', 'text-purple-600', 'bg-purple-50'],
-        [WalletCards, 'PPT', '15 Years', 'text-pink-600', 'bg-pink-50'],
-        [Calendar, 'Policy Maturity Date', '18 May 2045', 'text-amber-600', 'bg-amber-50'],
-        [FileText, 'Total Premium Payable', '\u20b9 1,80,000', 'text-indigo-600', 'bg-indigo-50'],
+        [ClipboardList, 'Policy Name', form.policyName || '—', 'text-green-600', 'bg-green-50'],
+        [User, 'Type', typeLabel || '—', 'text-green-600', 'bg-green-50'],
+        [Shield, 'Sum Assured', form.sumAssured ? formatCurrency(Number(form.sumAssured)) : '—', 'text-green-600', 'bg-green-50'],
+        [Calendar, 'Policy Term', form.policyTerm || '—', 'text-purple-600', 'bg-purple-50'],
+        [Calendar, 'Policy End Date', form.policyEndDate || '—', 'text-amber-600', 'bg-amber-50'],
+        [FileText, 'Premium Amount', form.premiumAmount ? formatCurrency(Number(form.premiumAmount)) : '—', 'text-indigo-600', 'bg-indigo-50'],
       ]
     : [
-        [ClipboardList, 'Policy Name', 'Term Life Insurance', 'text-green-600', 'bg-green-50'],
-        [User, variant === 'docs' ? 'Insured' : 'Life Assured', 'Rajat Sharma', 'text-blue-600', 'bg-blue-50'],
-        [BadgeIndianRupee, 'Sum Assured', '\u20b9 10,00,000', 'text-orange-600', 'bg-orange-50'],
-        [Calendar, 'Policy Term', '20 Years', 'text-purple-600', 'bg-purple-50'],
-        [WalletCards, 'PPT', '15 Years', 'text-pink-600', 'bg-pink-50'],
+        [ClipboardList, 'Policy Name', form.policyName || '—', 'text-green-600', 'bg-green-50'],
+        [User, variant === 'docs' ? 'Insurer' : 'Type', variant === 'docs' ? (form.provider || '—') : (typeLabel || '—'), 'text-blue-600', 'bg-blue-50'],
+        [BadgeIndianRupee, 'Sum Assured', form.sumAssured ? formatCurrency(Number(form.sumAssured)) : '—', 'text-orange-600', 'bg-orange-50'],
+        [Calendar, 'Policy Term', form.policyTerm || '—', 'text-purple-600', 'bg-purple-50'],
       ]
 
   return (
@@ -177,75 +164,68 @@ function SnapshotPanel({ variant }: { variant: 'nominee' | 'docs' | 'review' }) 
       <Card padding="sm" className="rounded-lg">
         <h3 className="mb-3 text-sm font-bold text-[#11194f]">{variant === 'docs' ? "What you've entered" : 'Policy Snapshot'}</h3>
         <div className="overflow-hidden rounded-lg border border-slate-100">
-          {rows.map(([Icon, label, value, color, bg]) => {
-            const RowIcon = Icon as typeof Shield
-            return (
-              <div key={String(label)} className="flex items-center gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0">
-                <div className={`flex h-7 w-7 items-center justify-center rounded-full ${bg}`}>
-                  <RowIcon size={14} className={String(color)} />
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-[#11194f]">{String(label)}</p>
-                  <p className="text-[11px] font-semibold text-[#34406f]">{String(value)}</p>
-                </div>
+          {rows.map(([RowIcon, label, value, color, bg]) => (
+            <div key={label} className="flex items-center gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0">
+              <div className={`flex h-7 w-7 items-center justify-center rounded-full ${bg}`}>
+                <RowIcon size={14} className={color} />
               </div>
-            )
-          })}
+              <div>
+                <p className="text-[11px] font-bold text-[#11194f]">{label}</p>
+                <p className="text-[11px] font-semibold text-[#34406f]">{value}</p>
+              </div>
+            </div>
+          ))}
         </div>
-        {review && (
-          <button className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-md border border-slate-200 text-[11px] font-bold text-blue-600">
-            <Download size={13} /> Download Summary
-          </button>
-        )}
-        {variant === 'docs' && (
-          <button className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-md border border-slate-200 text-[11px] font-bold text-blue-600">
-            <Edit3 size={13} /> Edit Details
-          </button>
-        )}
       </Card>
-      <Card padding="sm" className="rounded-lg bg-purple-50/80">
-        <div className="mb-3 flex items-center gap-2 text-sm font-bold text-[#11194f]">
-          <Lightbulb size={16} className="text-purple-600" /> Tips
-        </div>
-        {(review
-          ? ['Please review all details carefully before saving.', 'You can edit any section using the Edit option.', 'Once saved, your policy will be securely stored in your account.', 'Need help? Contact our support team.']
-          : variant === 'docs'
-            ? ['Upload valid and readable documents.', 'All mandatory documents are required to proceed.', 'You can upload color or scanned copies.', 'Maximum file size allowed is 10MB per file.', 'View supported formats']
-            : ['Add at least one nominee.', 'Share allocation must be 100%.', 'You can add both Primary & Contingent nominees.', 'Update details anytime before saving.']
-        ).map(item => (
-          <div key={item} className="mb-2 flex items-start gap-2 text-[11px] font-semibold leading-relaxed text-[#34406f] last:mb-0">
-            <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-green-600" /> {item}
+      {variant === 'nominee' && nominees.length > 0 && (
+        <Card padding="sm" className="rounded-lg bg-purple-50/80">
+          <div className="mb-2 flex items-center gap-2 text-sm font-bold text-[#11194f]">
+            <Users size={16} className="text-purple-600" /> {nominees.length} Nominee{nominees.length > 1 ? 's' : ''}
           </div>
-        ))}
-      </Card>
+          <p className="text-[11px] font-medium leading-relaxed text-[#34406f]">
+            Total share: {nominees.reduce((s, n) => s + (Number(n.sharePercent) || 0), 0)}%
+          </p>
+        </Card>
+      )}
     </div>
   )
 }
 
-function StepOne({ next }: { next: () => void }) {
+function StepOne({ register, errors, next }: {
+  register: ReturnType<typeof useForm<PolicyFormData>>['register']
+  errors: ReturnType<typeof useForm<PolicyFormData>>['formState']['errors']
+  next: () => void
+}) {
   return (
     <Card padding="sm" className="rounded-lg">
       <h2 className="text-sm font-bold text-[#11194f]">Policy Details</h2>
       <p className="mb-4 text-[11px] text-[#34406f]">Enter basic information about your insurance policy.</p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Field type="select" label="Insurance Type" placeholder="Select Insurance Type" required />
-        <Field label="Policy Name" placeholder="Enter Policy Name" required />
-        <Field type="select" label="Insurance Provider" placeholder="Select Insurance Provider" required />
-        <Field label="Policy Number" placeholder="Enter Policy Number" required />
-        <Field type="date" label="Policy Start Date" placeholder="Select Start Date" required />
-        <Field type="date" label="Policy Payment End Date (PPT)" placeholder="Select PPT Date" required hint="The date till which premiums are payable." />
-        <Field type="date" label="Policy Maturity Date" placeholder="Select Maturity Date" hint="The date on which the policy matures." />
-        <Field type="select" label="Policy Term" placeholder="Select Policy Term" />
-        <Field label="Sum Assured" placeholder="Enter Sum Assured" required prefix={<span className="text-[11px] font-bold">&#8377;</span>} />
-        <Field label="Premium Amount" placeholder="Enter Premium Amount" required prefix={<span className="text-[11px] font-bold">&#8377;</span>} />
-        <Field type="select" label="Payment Frequency" placeholder="Select Frequency" />
-        <Field type="select" label="Policy Status" placeholder="Select Status" />
-        <Field type="date" label="Policy Purchased On" placeholder="Select Purchase Date" />
-        <Field type="textarea" label="Notes (Optional)" placeholder="Add any additional notes about this policy" wide />
+        <Select label="Insurance Type" required {...register('insuranceType')} error={errors.insuranceType?.message}>
+          <option value="">Select Insurance Type</option>
+          {INSURANCE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </Select>
+        <Input label="Policy Name" placeholder="Enter Policy Name" required {...register('policyName')} error={errors.policyName?.message} />
+        <Input label="Insurance Provider" placeholder="Enter Insurance Provider" required {...register('provider')} error={errors.provider?.message} />
+        <Input label="Policy Number" placeholder="Enter Policy Number" {...register('policyNumber')} />
+        <Input label="Plan Name" placeholder="e.g. Term Plan, Comprehensive" hint="The specific product/plan name, if different from policy name." {...register('planName')} />
+        <Select label="Policy Term" placeholder="Select Policy Term" {...register('policyTerm')}>
+          {POLICY_TERMS.map(t => <option key={t} value={t}>{t}</option>)}
+        </Select>
+        <Input label="Policy Start Date" type="date" required {...register('policyStartDate')} error={errors.policyStartDate?.message} rightElement={<Calendar size={13} className="text-slate-400" />} />
+        <Input label="Policy End / Maturity Date" type="date" required {...register('policyEndDate')} error={errors.policyEndDate?.message} rightElement={<Calendar size={13} className="text-slate-400" />} />
+        <Input label="Sum Assured" type="number" min="0" placeholder="Enter Sum Assured" required leftIcon={<span className="text-xs">₹</span>} {...register('sumAssured')} error={errors.sumAssured?.message} />
+        <Input label="Premium Amount" type="number" min="0" placeholder="Enter Premium Amount" required {...register('premiumAmount')} error={errors.premiumAmount?.message} />
+        <Select label="Payment Frequency" {...register('premiumFrequency')}>
+          {PAYMENT_FREQUENCIES.map(f => <option key={f} value={f}>{f.replace('_', '-')}</option>)}
+        </Select>
+        <Select label="Policy Status" {...register('status')}>
+          {POLICY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </Select>
+        <Textarea label="Notes (Optional)" placeholder="Add any additional notes about this policy" containerClassName="lg:col-span-2" {...register('notes')} />
       </div>
-      <p className="-mt-5 mb-4 text-right text-[11px] text-slate-400">0/500</p>
-      <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm">Cancel</Button>
+      <div className="flex items-center justify-between mt-4">
+        <Link to="/app/insurance"><Button variant="outline" size="sm">Cancel</Button></Link>
         <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={next}>Save & Continue</Button>
       </div>
     </Card>
@@ -256,29 +236,50 @@ function StepTwo({ back, next }: { back: () => void; next: () => void }) {
   return (
     <Card padding="sm" className="rounded-lg">
       <h2 className="text-sm font-bold text-[#11194f]">Coverage Details</h2>
-      <p className="mb-4 text-[11px] text-[#34406f]">Provide details about the coverage and benefits under your policy.</p>
+      <p className="mb-4 text-[11px] text-[#34406f]">Optional — describe the coverage and benefits under your policy for your own reference.</p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Field label="Sum Assured" placeholder="Enter Sum Assured" required prefix={<span className="text-[11px] font-bold">&#8377;</span>} />
-        <Field type="select" label="Death Benefit" placeholder="Select Death Benefit" />
-        <Field type="select" label="Maturity Benefit" placeholder="Select Maturity Benefit" />
-        <Field type="select" label="Accidental Death Benefit (ADB)" placeholder="Select ADB" />
-        <Field type="select" label="Critical Illness Benefit" placeholder="Select Critical Illness Benefit" />
-        <Field type="select" label="Waiver of Premium" placeholder="Select Waiver of Premium" />
-        <Field type="select" label="Hospital Cash Benefit" placeholder="Select Hospital Cash Benefit" />
-        <Field type="select" label="Daily Allowance Benefit" placeholder="Select Daily Allowance Benefit" />
-        <Field label="Other Benefits (Optional)" placeholder="Enter Other Benefits" />
-        <Field type="select" label="Rider(s) Opted" placeholder="Select Rider(s) Opted" />
-        <Field label="Rider Sum Assured (If Applicable)" placeholder="Enter Rider Sum Assured" prefix={<span className="text-[11px] font-bold">&#8377;</span>} wide />
-        <Field type="textarea" label="Additional Coverage Details (Optional)" placeholder="Add any additional details about the coverage" wide />
+        <Field label="Death Benefit" placeholder="e.g. Sum Assured on death" />
+        <Field label="Maturity Benefit" placeholder="e.g. Sum Assured on maturity" />
+        <Field label="Accidental Death Benefit (ADB)" placeholder="If applicable" />
+        <Field label="Critical Illness Benefit" placeholder="If applicable" />
+        <Field label="Waiver of Premium" placeholder="If applicable" />
+        <Field label="Rider(s) Opted" placeholder="e.g. Critical Illness Rider" />
       </div>
-      <p className="-mt-5 mb-4 text-right text-[11px] text-slate-400">0/500</p>
+      <div className="mt-4 flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
+        <Info size={14} className="shrink-0" /> This section is for your own reference only and isn't stored with the policy record.
+      </div>
       <FooterNav back={back} next={next} />
-      <InfoBar text="You can review and edit the information in the next steps before saving." />
     </Card>
   )
 }
 
-function StepThree({ back, next }: { back: () => void; next: () => void }) {
+function Field({ label, placeholder }: { label: string; placeholder: string }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-[11px] font-semibold text-[#11194f]">{label}</label>
+      <input
+        className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+        placeholder={placeholder}
+      />
+    </div>
+  )
+}
+
+function StepThree({ nominees, setNominees, back, next }: {
+  nominees: NomineeForm[]
+  setNominees: (n: NomineeForm[]) => void
+  back: () => void
+  next: () => void
+}) {
+  const update = (idx: number, field: keyof NomineeForm, value: string) => {
+    const copy = [...nominees]
+    copy[idx] = { ...copy[idx], [field]: value }
+    setNominees(copy)
+  }
+  const add = () => setNominees([...nominees, { ...EMPTY_NOMINEE }])
+  const remove = (idx: number) => setNominees(nominees.filter((_, i) => i !== idx))
+  const totalShare = nominees.reduce((s, n) => s + (Number(n.sharePercent) || 0), 0)
+
   return (
     <Card padding="sm" className="rounded-lg">
       <div className="mb-2 flex items-center justify-between">
@@ -286,62 +287,48 @@ function StepThree({ back, next }: { back: () => void; next: () => void }) {
           <h2 className="text-sm font-bold text-[#11194f]">Nominee Details</h2>
           <p className="text-[11px] text-[#34406f]">Add nominee(s) who will receive the benefits in case of an unfortunate event.</p>
         </div>
-        <Button variant="outline" size="sm" leftIcon={<Plus size={13} />}>Add Nominee</Button>
+        <Button variant="outline" size="sm" leftIcon={<Plus size={13} />} onClick={add}>Add Nominee</Button>
       </div>
-      <InfoBar text="You can add multiple nominees. Total allocation must be 100%." />
-      {[
-        { name: 'Priya Sharma', relation: 'Spouse', dob: '12 Feb 1988', share: '60', type: 'Primary Nominee' },
-        { name: 'Aarav Sharma', relation: 'Son', dob: '24 Jul 2016', share: '40', type: 'Contingent Nominee' },
-      ].map((nominee, idx) => (
-        <div key={nominee.name} className="mb-3 rounded-lg border border-slate-100 p-4">
+      <div className="my-4 flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
+        <Info size={14} className="shrink-0" /> You can add multiple nominees. Total allocation must be 100%.
+      </div>
+      {nominees.length === 0 && (
+        <p className="mb-3 text-[11px] text-slate-400">No nominees added yet — click "Add Nominee" (optional).</p>
+      )}
+      {nominees.map((nominee, idx) => (
+        <div key={idx} className="mb-3 rounded-lg border border-slate-100 p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-bold text-[#11194f]">Nominee {idx + 1}</p>
-            <button className="flex items-center gap-1 text-[11px] font-bold text-red-500"><Trash2 size={13} /> Remove</button>
+            <button type="button" className="flex items-center gap-1 text-[11px] font-bold text-red-500" onClick={() => remove(idx)}>
+              <Trash2 size={13} /> Remove
+            </button>
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[1fr_1.15fr_1fr_0.7fr]">
-            <Field label="Nominee Name" value={nominee.name} required />
-            <Field type="select" label="Relationship with Life Assured" value={nominee.relation} required />
-            <Field type="date" label="Date of Birth" value={nominee.dob} />
-            <Field label="Share (%)" value={nominee.share} required suffix={<span className="font-bold">%</span>} />
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div>
-              <p className="mb-2 text-[11px] font-bold text-[#11194f]">Nominee Type <span className="text-red-500">*</span></p>
-              <div className="flex flex-wrap gap-6 text-[11px] font-semibold text-[#34406f]">
-                {['Primary Nominee', 'Contingent Nominee'].map(type => (
-                  <label key={type} className="flex items-center gap-2">
-                    <span className={`h-4 w-4 rounded-full border ${nominee.type === type ? 'border-green-600 bg-green-600 shadow-[inset_0_0_0_4px_white]' : 'border-slate-300'}`} />
-                    {type}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <Field label="Guardian (If Minor)" placeholder="Enter Guardian Name (Optional)" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <Input label="Nominee Name" required value={nominee.fullName} onChange={e => update(idx, 'fullName', e.target.value)} />
+            <Input label="Relationship" required value={nominee.relationship} onChange={e => update(idx, 'relationship', e.target.value)} />
+            <Input label="Date of Birth" type="date" value={nominee.dateOfBirth} onChange={e => update(idx, 'dateOfBirth', e.target.value)} />
+            <Input label="Email (Optional)" type="email" value={nominee.email} onChange={e => update(idx, 'email', e.target.value)} />
+            <Input label="Share (%)" required type="number" min="0" max="100" value={nominee.sharePercent} onChange={e => update(idx, 'sharePercent', e.target.value)} />
           </div>
         </div>
       ))}
-      <div className="mb-4 grid grid-cols-2 gap-4 rounded-lg bg-green-50 p-3 lg:grid-cols-4">
-        {[
-          ['Total Nominee Allocation', '100%', 'Balanced'],
-          ['Total Primary Nominee', '60%', ''],
-          ['Total Contingent Nominee', '40%', ''],
-          ['Total Nominees', '2', ''],
-        ].map(([label, value, badge]) => (
-          <div key={label} className="border-r border-green-100 last:border-r-0">
-            <p className="text-[11px] font-semibold text-[#34406f]">{label}</p>
-            <div className="flex items-center gap-2">
-              <p className="text-lg font-bold text-[#11194f]">{value}</p>
-              {badge && <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">{badge}</span>}
-            </div>
-          </div>
-        ))}
-      </div>
+      {nominees.length > 0 && (
+        <div className="mb-4 rounded-lg bg-green-50 p-3">
+          <p className="text-[11px] font-semibold text-[#34406f]">Total Nominee Allocation</p>
+          <p className="text-lg font-bold text-[#11194f]">{totalShare}%</p>
+        </div>
+      )}
       <FooterNav back={back} next={next} />
     </Card>
   )
 }
 
-function StepFour({ back, next }: { back: () => void; next: () => void }) {
+function StepFour({ files, setFiles, back, next }: {
+  files: Record<string, File | null>
+  setFiles: (f: Record<string, File | null>) => void
+  back: () => void
+  next: () => void
+}) {
   return (
     <Card padding="sm" className="rounded-lg">
       <h2 className="text-sm font-bold text-[#11194f]">Document Upload</h2>
@@ -354,10 +341,11 @@ function StepFour({ back, next }: { back: () => void; next: () => void }) {
             </tr>
           </thead>
           <tbody>
-            {DOCS.map(doc => {
+            {DOC_TYPES.map(doc => {
               const Icon = doc.icon
+              const file = files[doc.key]
               return (
-                <tr key={doc.type}>
+                <tr key={doc.key}>
                   <td className="border-b border-slate-100 px-4 py-3">
                     <div className="flex items-center gap-3 text-[11px] font-bold text-[#11194f]">
                       <span className={`flex h-7 w-7 items-center justify-center rounded-full ${doc.bg}`}>
@@ -371,9 +359,15 @@ function StepFour({ back, next }: { back: () => void; next: () => void }) {
                     <span className={`rounded-full px-3 py-1 text-[10px] font-bold ${doc.mandatory ? 'bg-green-50 text-green-700' : 'bg-slate-50 text-slate-500'}`}>{doc.mandatory ? 'Yes' : 'No'}</span>
                   </td>
                   <td className="border-b border-slate-100 px-4 py-3">
-                    <button className="flex h-8 items-center gap-2 rounded-md border border-slate-200 px-3 text-[11px] font-bold text-blue-600">
-                      <CloudUpload size={14} /> Upload File
-                    </button>
+                    <label className="flex h-8 w-fit cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 text-[11px] font-bold text-blue-600 hover:bg-slate-50">
+                      <CloudUpload size={14} /> {file ? file.name.slice(0, 20) : 'Upload File'}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={e => setFiles({ ...files, [doc.key]: e.target.files?.[0] ?? null })}
+                      />
+                    </label>
                   </td>
                 </tr>
               )
@@ -381,40 +375,48 @@ function StepFour({ back, next }: { back: () => void; next: () => void }) {
           </tbody>
         </table>
       </div>
-      <InfoBar text="Ensure all documents are clear and legible. Blurry or incomplete documents may delay verification." />
+      <div className="my-4 flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
+        <Info size={14} className="shrink-0" /> Ensure all documents are clear and legible. Blurry or incomplete documents may delay verification.
+      </div>
       <FooterNav back={back} next={next} />
     </Card>
   )
 }
 
-function StepFive({ back }: { back: () => void }) {
-  const navigate = useNavigate()
+function StepFive({ form, nominees, files, back, submitting, onSave }: {
+  form: PolicyFormData
+  nominees: NomineeForm[]
+  files: Record<string, File | null>
+  back: () => void
+  submitting: boolean
+  onSave: () => void
+}) {
+  const typeLabel = INSURANCE_TYPES.find(t => t.value === form.insuranceType)?.label ?? form.insuranceType
+  const uploadedCount = Object.values(files).filter(Boolean).length
+  const mandatoryCount = DOC_TYPES.filter(d => d.mandatory).length
+  const mandatoryUploaded = DOC_TYPES.filter(d => d.mandatory && files[d.key]).length
+
   const groups = [
-    { icon: Shield, title: 'Policy Details', fields: [['Policy Name', 'Term Life Insurance'], ['Insured', 'Rajat Sharma'], ['Sum Assured', '\u20b9 10,00,000'], ['Policy Term', '20 Years'], ['PPT', '15 Years'], ['Policy Maturity Date', '18 May 2045']] },
-    { icon: CloudUpload, title: 'Coverage Details', fields: [['Annual Premium', '\u20b9 12,000'], ['Premium Frequency', 'Yearly'], ['Premium Payment Term (PPT)', '15 Years'], ['Premium Mode', 'Regular Pay'], ['Total Premium Payable', '\u20b9 1,80,000']] },
-    { icon: Users, title: 'Nominee Details', fields: [['Total Nominees', '2'], ['Primary Nominee', 'Priya Sharma (60%)'], ['Contingent Nominee', 'Aarav Sharma (40%)'], ['Nominee Allocation', '100% (Balanced)']] },
-    { icon: FileText, title: 'Documents Upload', fields: [['Total Documents', '6'], ['Mandatory Documents', '6 / 6 Uploaded'], ['Optional Documents', '0 / 2 Uploaded'], ['All Documents', 'Verified']] },
-    { icon: CircleDollarSign, title: 'Additional Information', fields: [['Insured Age', '35 Years'], ['Sum Assured Type', 'Individual'], ['Plan Type', 'Savings Plan'], ['Product Category', 'Life Insurance']] },
+    { icon: Shield, title: 'Policy Details', fields: [['Policy Name', form.policyName || '—'], ['Type', typeLabel || '—'], ['Provider', form.provider || '—'], ['Sum Assured', form.sumAssured ? formatCurrency(Number(form.sumAssured)) : '—'], ['Policy Term', form.policyTerm || '—'], ['Policy End Date', form.policyEndDate || '—']] },
+    { icon: CloudUpload, title: 'Premium Details', fields: [['Premium Amount', form.premiumAmount ? formatCurrency(Number(form.premiumAmount)) : '—'], ['Payment Frequency', form.premiumFrequency ?? 'ANNUAL'], ['Status', form.status ?? 'ACTIVE']] },
+    { icon: Users, title: 'Nominee Details', fields: [['Total Nominees', String(nominees.length)], ...nominees.map((n, i) => [`Nominee ${i + 1}`, `${n.fullName || '—'} (${n.sharePercent || 0}%)`] as [string, string])] },
+    { icon: FileText, title: 'Documents Upload', fields: [['Total Documents', String(uploadedCount)], ['Mandatory Documents', `${mandatoryUploaded} / ${mandatoryCount} Uploaded`]] },
   ]
   return (
     <Card padding="sm" className="rounded-lg">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-bold text-[#11194f]">Review Your Policy Details</h2>
-          <p className="text-[11px] text-[#34406f]">Please review all the details carefully before saving. You can edit any section if needed.</p>
+          <p className="text-[11px] text-[#34406f]">Please review all the details carefully before saving.</p>
         </div>
-        <Button variant="outline" size="sm" leftIcon={<Edit3 size={13} />}>Edit All</Button>
       </div>
       {groups.map(group => {
         const Icon = group.icon
         return (
           <div key={group.title} className="mb-3 rounded-lg border border-slate-100 p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-50"><Icon size={14} className="text-green-600" /></span>
-                <p className="text-sm font-bold text-[#11194f]">{group.title}</p>
-              </div>
-              <button className="flex items-center gap-2 text-[11px] font-bold text-blue-600"><Edit3 size={12} /> Edit <ChevronDown size={13} /></button>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-50"><Icon size={14} className="text-green-600" /></span>
+              <p className="text-sm font-bold text-[#11194f]">{group.title}</p>
             </div>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
               {group.fields.map(([label, value]) => (
@@ -427,17 +429,17 @@ function StepFive({ back }: { back: () => void }) {
           </div>
         )
       })}
-      <InfoBar text="By saving, you confirm that all the information provided is true, correct and complete to the best of your knowledge." />
+      <div className="my-4 flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
+        <Info size={14} className="shrink-0" /> By saving, you confirm that all the information provided is true, correct and complete to the best of your knowledge.
+      </div>
       <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" leftIcon={<ArrowLeft size={14} />} onClick={back}>Back</Button>
+        <Button variant="outline" size="sm" leftIcon={<ArrowLeft size={14} />} onClick={back} disabled={submitting}>Back</Button>
         <Button
           size="lg"
           className="min-w-56 bg-blue-600 hover:bg-blue-700"
           leftIcon={<Lock size={14} />}
-          onClick={() => {
-            toast.success('Policy saved successfully!')
-            navigate('/app/my-plan/plan-details/pol-life')
-          }}
+          loading={submitting}
+          onClick={onSave}
         >
           <div>
             <p className="leading-none">Save Policy</p>
@@ -453,25 +455,78 @@ function FooterNav({ back, next }: { back: () => void; next: () => void }) {
   return (
     <div className="mt-5 flex items-center justify-between">
       <Button variant="outline" size="sm" leftIcon={<ArrowLeft size={14} />} onClick={back}>Back</Button>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm">Save & Continue Later</Button>
-        <Button size="sm" className="bg-blue-600 hover:bg-blue-700" rightIcon={<ArrowRight size={14} />} onClick={next}>Save & Continue</Button>
-      </div>
-    </div>
-  )
-}
-
-function InfoBar({ text }: { text: string }) {
-  return (
-    <div className="my-4 flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
-      <Info size={14} className="shrink-0" /> {text}
+      <Button size="sm" className="bg-blue-600 hover:bg-blue-700" rightIcon={<ArrowRight size={14} />} onClick={next}>Save & Continue</Button>
     </div>
   )
 }
 
 export function AddPolicyPage() {
+  const navigate = useNavigate()
   const [step, setStep] = useState(1)
+  const [nominees, setNominees] = useState<NomineeForm[]>([])
+  const [files, setFiles] = useState<Record<string, File | null>>({})
+  const [submitting, setSubmitting] = useState(false)
   const go = (target: number) => setStep(Math.min(5, Math.max(1, target)))
+
+  const { register, handleSubmit, trigger, getValues, formState: { errors } } = useForm<PolicyFormData>({
+    resolver: zodResolver(policySchema),
+    defaultValues: { premiumFrequency: 'ANNUAL', status: 'ACTIVE' },
+  })
+
+  const validateStep1AndGo = async () => {
+    const valid = await trigger(['insuranceType', 'policyName', 'provider', 'policyStartDate', 'policyEndDate', 'sumAssured', 'premiumAmount'])
+    if (valid) go(2)
+  }
+
+  const handleSave = handleSubmit(async (data) => {
+    setSubmitting(true)
+    try {
+      const res = await policyService.create({
+        policyName: data.policyName,
+        policyNumber: data.policyNumber || undefined,
+        planName: data.planName || undefined,
+        insuranceType: data.insuranceType,
+        provider: data.provider,
+        sumAssured: Number(data.sumAssured),
+        premiumAmount: Number(data.premiumAmount),
+        premiumFrequency: data.premiumFrequency,
+        policyStartDate: data.policyStartDate,
+        policyEndDate: data.policyEndDate,
+        policyTerm: data.policyTerm ? parseInt(data.policyTerm) : undefined,
+        notes: data.notes || undefined,
+        nominees: nominees
+          .filter(n => n.fullName)
+          .map(n => ({
+            fullName: n.fullName,
+            relationship: n.relationship,
+            dateOfBirth: n.dateOfBirth || undefined,
+            sharePercent: Number(n.sharePercent) || 0,
+            email: n.email || undefined,
+          })),
+      } as any)
+      const policy = (res.data as any).data ?? (res.data as any)
+
+      // Upload any attached documents, linked to the new policy.
+      const uploads = DOC_TYPES.filter(d => files[d.key]).map(d =>
+        documentService.upload(files[d.key] as File, {
+          category: 'INSURANCE',
+          policyId: policy.id,
+          docType: d.type,
+        }).catch(() => null)
+      )
+      await Promise.all(uploads)
+
+      toast.success('Policy saved successfully!')
+      navigate(`/app/insurance/${policy.id}`)
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error(err.response?.data?.message || 'Failed to save policy')
+    } finally {
+      setSubmitting(false)
+    }
+  })
+
+  const formValues = getValues()
 
   return (
     <div className="min-h-full bg-white p-4 sm:p-5">
@@ -486,29 +541,23 @@ export function AddPolicyPage() {
               {step === 5 && <><span className="text-slate-400">&gt;</span><span className="text-[#11194f]">Review & Save</span></>}
             </nav>
           </div>
-          <div className="hidden sm:flex items-center gap-4 pt-9">
-            <p className="text-xs font-semibold text-[#34406f]">Last login: 18 May 2025, 11:25 AM</p>
-            <div className="flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
-              <Shield size={12} /> Secure Session
-            </div>
-          </div>
         </div>
 
         <FlowStepper step={step} onStepClick={go} />
 
         <div className="grid gap-4 xl:grid-cols-[1fr_290px]">
           <div>
-            {step === 1 && <StepOne next={() => go(2)} />}
+            {step === 1 && <StepOne register={register} errors={errors} next={validateStep1AndGo} />}
             {step === 2 && <StepTwo back={() => go(1)} next={() => go(3)} />}
-            {step === 3 && <StepThree back={() => go(2)} next={() => go(4)} />}
-            {step === 4 && <StepFour back={() => go(3)} next={() => go(5)} />}
-            {step === 5 && <StepFive back={() => go(4)} />}
+            {step === 3 && <StepThree nominees={nominees} setNominees={setNominees} back={() => go(2)} next={() => go(4)} />}
+            {step === 4 && <StepFour files={files} setFiles={setFiles} back={() => go(3)} next={() => go(5)} />}
+            {step === 5 && <StepFive form={formValues} nominees={nominees} files={files} back={() => go(4)} submitting={submitting} onSave={handleSave} />}
           </div>
           <aside className="hidden xl:block">
             {step <= 2 && <WhyPanel step={step} />}
-            {step === 3 && <SnapshotPanel variant="nominee" />}
-            {step === 4 && <SnapshotPanel variant="docs" />}
-            {step === 5 && <SnapshotPanel variant="review" />}
+            {step === 3 && <SnapshotPanel variant="nominee" form={formValues} nominees={nominees} />}
+            {step === 4 && <SnapshotPanel variant="docs" form={formValues} nominees={nominees} />}
+            {step === 5 && <SnapshotPanel variant="review" form={formValues} nominees={nominees} />}
           </aside>
         </div>
       </div>

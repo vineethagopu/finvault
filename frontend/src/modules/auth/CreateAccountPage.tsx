@@ -1,15 +1,15 @@
 import React, { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, ArrowRight, Shield, Bell, Lock, FileText, User, Check } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Shield, Bell, Lock, FileText, User, Check, Mail, Phone } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { OtpInput } from '@/components/ui/OtpInput'
 import { Stepper } from '@/components/ui/Stepper'
 import { Logo } from '@/components/layout/Logo'
+import { InlineOtpVerify } from '@/components/auth/InlineOtpVerify'
 import { authService } from '@/services/authService'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -28,10 +28,10 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 const STEPS = [
-  { id: 1, label: 'Account Details', description: 'Your information', icon: <User size={14} /> },
-  { id: 2, label: 'Verify Email', description: 'Email verification', icon: <span>✉️</span> },
-  { id: 3, label: 'Verify Mobile', description: 'Mobile verification', icon: <span>📱</span> },
-  { id: 4, label: 'Account Created', description: 'Done!', icon: <Check size={14} /> },
+  { id: 1, label: 'Account Details', icon: <User size={12} /> },
+  { id: 2, label: 'Verify Email', icon: <Mail size={12} /> },
+  { id: 3, label: 'Verify Mobile', icon: <Phone size={12} /> },
+  { id: 4, label: 'Account Created', icon: <Check size={12} /> },
 ]
 
 const BENEFITS = [
@@ -42,54 +42,59 @@ const BENEFITS = [
 ]
 
 export function CreateAccountPage() {
-  const { planType } = useParams<{ planType: string }>()
-  const isFamily = planType === 'family'
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
-  const [step, setStep] = useState(1)
-  const [emailOtp, setEmailOtp] = useState('')
-  const [mobileOtp, setMobileOtp] = useState('')
+  const [success, setSuccess] = useState(false)
+
+  const [confirmedEmail, setConfirmedEmail] = useState('')
+  const [emailVerified, setEmailVerified] = useState(false)
+  const [confirmedMobile, setConfirmedMobile] = useState('')
+  const [mobileVerified, setMobileVerified] = useState(false)
 
   const form = useForm<FormData>({ resolver: zodResolver(schema) })
   const { register, handleSubmit, formState: { errors, isSubmitting }, getValues, trigger } = form
 
-  const handleStep1 = async () => {
+  const handleEmailBlur = async () => {
+    const valid = await trigger('email')
+    const val = getValues('email')
+    if (valid && val && val !== confirmedEmail) {
+      setConfirmedEmail(val)
+      setEmailVerified(false)
+    }
+  }
+
+  const handleMobileBlur = async () => {
+    const valid = await trigger('mobile')
+    const val = getValues('mobile')
+    if (valid && val && val !== confirmedMobile) {
+      setConfirmedMobile(val)
+      setMobileVerified(false)
+    }
+  }
+
+  const currentStep = success ? 4 : mobileVerified ? 4 : emailVerified ? 3 : confirmedEmail ? 2 : 1
+
+  const handleCreateAccount = async () => {
     const valid = await trigger(['firstName', 'lastName', 'email', 'mobile', 'username', 'password', 'confirmPassword', 'agreedToTerms'])
     if (!valid) return
-    // Send OTPs
+    if (!emailVerified) { toast.error('Please verify your email first'); return }
+    if (!mobileVerified) { toast.error('Please verify your mobile number first'); return }
     try {
-      await authService.sendOtp({ username: getValues('username'), contactInfo: getValues('email') })
-      setStep(2)
-      toast.success('Verification code sent to your email!')
-    } catch {
-      toast.error('Failed to send verification code')
-    }
-  }
-
-  const handleVerifyEmail = async () => {
-    if (emailOtp.length < 6) { toast.error('Enter complete OTP'); return }
-    try {
-      await authService.verifyOtp({ type: 'EMAIL', otp: emailOtp, identifier: getValues('email') })
-      await authService.sendOtp({ username: getValues('username'), contactInfo: getValues('mobile') })
-      setStep(3)
-      toast.success('Email verified! Sending mobile OTP...')
-    } catch {
-      toast.error('Invalid OTP')
-    }
-  }
-
-  const handleVerifyMobile = async () => {
-    if (mobileOtp.length < 6) { toast.error('Enter complete OTP'); return }
-    try {
-      await authService.verifyOtp({ type: 'MOBILE', otp: mobileOtp, identifier: getValues('mobile') })
-      // Create account
-      const data = getValues()
-      const res = await authService.register({ ...data, planType: isFamily ? 'FAMILY' : 'INDIVIDUAL' })
-      setUser(res.data.user)
-      setStep(4)
+      const { firstName, lastName, email, mobile, username, password } = getValues()
+      const res = await authService.register({
+        firstName, lastName, email, mobile, username, password,
+        planType: 'INDIVIDUAL',
+      } as any)
+      const user = (res.data as any).data?.user ?? (res.data as any).user
+      if (!user) throw new Error('Malformed register response')
+      const loginRes = await authService.login({ username, password })
+      const loggedInUser = (loginRes.data as any).data?.user ?? (loginRes.data as any).user
+      setUser(loggedInUser ?? user)
+      setSuccess(true)
       toast.success('Account created!')
-    } catch {
-      toast.error('Invalid OTP or registration failed')
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error(err.response?.data?.message || 'Registration failed')
     }
   }
 
@@ -152,40 +157,27 @@ export function CreateAccountPage() {
         <div className="flex-1 py-8 px-4 sm:px-8">
           {/* Stepper */}
           <div className="max-w-2xl mx-auto mb-8">
-            <Stepper steps={STEPS} currentStep={step} />
+            <Stepper steps={STEPS} currentStep={currentStep} size="sm" />
           </div>
 
           <div className="max-w-2xl mx-auto">
             <AnimatePresence mode="wait">
-              {/* Step 1: Account Details */}
-              {step === 1 && (
-                <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              {!success && (
+                <motion.div key="form" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                   <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <Input label="First Name" placeholder="First Name" leftIcon={<User size={14} />} {...register('firstName')} error={errors.firstName?.message} required />
                       <Input label="Last Name" placeholder="Last Name" leftIcon={<User size={14} />} {...register('lastName')} error={errors.lastName?.message} required />
                     </div>
-                    <div className="mt-4">
-                      <Input label="Email Address" type="email" placeholder="Email Address" leftIcon={<span className="text-sm">✉️</span>} {...register('email')} error={errors.email?.message} required />
-                    </div>
 
-                    {/* Email OTP section shown inline */}
-                    <div className="mt-4 p-4 bg-slate-50 rounded-xl">
-                      <p className="text-sm font-medium text-slate-700 mb-1">Verify your email</p>
-                      <p className="text-xs text-slate-500 mb-3">We've sent a 6-digit OTP to your email address.</p>
-                      <OtpInput length={6} value={emailOtp} onChange={setEmailOtp} />
-                      <p className="text-right text-xs text-green-600 mt-2 cursor-pointer hover:text-green-700">Resend OTP in 00:45</p>
+                    <div className="mt-4">
+                      <Input label="Email Address" type="email" placeholder="Email Address" leftIcon={<span className="text-sm">✉️</span>} {...register('email')} onBlur={handleEmailBlur} error={errors.email?.message} required />
+                      <InlineOtpVerify type="EMAIL" identifier={confirmedEmail} verified={emailVerified} onVerified={() => setEmailVerified(true)} />
                     </div>
 
                     <div className="mt-4">
-                      <Input label="Mobile Number" placeholder="Mobile Number" leftIcon={<span className="text-sm">📞</span>} {...register('mobile')} error={errors.mobile?.message} required />
-                    </div>
-
-                    <div className="mt-4 p-4 bg-slate-50 rounded-xl">
-                      <p className="text-sm font-medium text-slate-700 mb-1">Verify your mobile number</p>
-                      <p className="text-xs text-slate-500 mb-3">We've sent a 6-digit OTP to your mobile number.</p>
-                      <OtpInput length={6} value={mobileOtp} onChange={setMobileOtp} />
-                      <p className="text-right text-xs text-green-600 mt-2 cursor-pointer hover:text-green-700">Resend OTP in 00:45</p>
+                      <Input label="Mobile Number" placeholder="Mobile Number" leftIcon={<span className="text-sm">📞</span>} {...register('mobile')} onBlur={handleMobileBlur} error={errors.mobile?.message} required />
+                      <InlineOtpVerify type="MOBILE" identifier={confirmedMobile} verified={mobileVerified} onVerified={() => setMobileVerified(true)} />
                     </div>
 
                     <div className="mt-4">
@@ -208,9 +200,16 @@ export function CreateAccountPage() {
                     </div>
                     {errors.agreedToTerms && <p className="text-xs text-red-600 mt-1">{errors.agreedToTerms.message}</p>}
 
-                    <Button className="w-full mt-6" size="lg" onClick={handleStep1} loading={isSubmitting} rightIcon={<ArrowRight size={15} />}>
+                    <Button
+                      className="w-full mt-6" size="lg" onClick={handleCreateAccount} loading={isSubmitting}
+                      disabled={!emailVerified || !mobileVerified}
+                      rightIcon={<ArrowRight size={15} />}
+                    >
                       Create Account
                     </Button>
+                    {(!emailVerified || !mobileVerified) && (
+                      <p className="text-center text-xs text-slate-400 mt-2">Verify your email and mobile number to continue</p>
+                    )}
                     <p className="text-center text-sm text-slate-600 mt-4">
                       Already have an account?{' '}
                       <Link to="/login" className="text-green-600 font-semibold hover:text-green-700">Login</Link>
@@ -219,9 +218,8 @@ export function CreateAccountPage() {
                 </motion.div>
               )}
 
-              {/* Step 4: Success */}
-              {step === 4 && (
-                <motion.div key="step4" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+              {success && (
+                <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
                   className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center"
                 >
                   <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">

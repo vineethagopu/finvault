@@ -12,7 +12,10 @@ export class LoansController {
   constructor(private service: LoansService) {}
 
   @Get() findAll(@CurrentUser('id') uid: string, @Query() q: any) { return this.service.findAll(uid, q) }
+  @Get('eligibility') getEligibility(@CurrentUser('id') uid: string) { return this.service.getEligibility(uid) }
   @Get(':id') findOne(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.findOne(uid, id) }
+  @Get(':id/documents') getDocuments(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.getDocuments(uid, id) }
+  @Get(':id/transactions') getTransactions(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.getTransactions(uid, id) }
   @Post() create(@CurrentUser('id') uid: string, @Body() dto: any) { return this.service.create(uid, dto) }
   @Patch(':id') update(@CurrentUser('id') uid: string, @Param('id') id: string, @Body() dto: any) { return this.service.update(uid, id, dto) }
   @Delete(':id') @HttpCode(HttpStatus.OK) remove(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.remove(uid, id) }

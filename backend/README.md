@@ -25,6 +25,36 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## PolicyNext — local dev setup (read this first)
+
+Context for whoever (human, Claude, or Codex) picks this up next.
+
+### Database
+
+- Postgres runs in Docker: `docker run -d --name finvault-pg -e POSTGRES_USER=policynext -e POSTGRES_PASSWORD=dev_password -e POSTGRES_DB=policynext -p 5432:5432 postgres:16-alpine` (or `docker start finvault-pg` if it already exists).
+- `backend/.env` → `DATABASE_URL="postgresql://policynext:dev_password@localhost:5432/policynext?schema=public"`. The Prisma-init default (`prisma+postgres://…`, for the `prisma dev` local server) is kept commented above it — don't uncomment it, `prisma.service.ts` uses the `PrismaPg` driver adapter which requires a plain `postgres://` URL, not `prisma+postgres://`.
+- Schema changes go through **real migrations**, not `db push`: `npm run db:migrate` (dev, prompts for a migration name), `npm run db:migrate:deploy` (CI/prod, non-interactive), `npm run db:reset` (drops and replays all migrations — dev only).
+- Seed data: `npm run db:seed` (wired via `prisma.config.ts` → `migrations.seed`, runs `backend/prisma/seed.ts`). Creates demo user **rajat.sharma / Rajat@123** (matches the "Skip login (dev only)" button in `frontend/src/modules/auth/LoginPage.tsx`) plus one sample policy/investment/loan/beneficiary/notification so the dashboard isn't empty.
+
+### Email
+
+- `backend/src/email/` is a `@Global()` NestJS module (`EmailService`) using `nodemailer`.
+- If `SMTP_HOST` is **not** set in `.env`, it auto-provisions a free [Ethereal](https://ethereal.email) test inbox on boot (no signup, no real credentials) — mail never actually leaves Ethereal. Every send logs a preview URL (`nodemailer.getTestMessageUrl`) to view the rendered email in a browser.
+- To use real SMTP (e.g. Gmail app password), set `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` in `.env` (see `.env.example`) — the service switches automatically, no code change needed.
+- `sendMail()` always catches its own errors and logs rather than throwing — email delivery must never break register/login/OTP flows. Callers (see `auth.service.ts`) fire-and-forget it (`void this.emailService.sendMail(...)`), they don't `await` it on the critical path.
+
+### Auth / registration — OTP is not gating entry right now
+
+- `POST /auth/register` creates and returns a user directly; it has never actually required a verified-OTP proof (the `emailVerified/mobileVerified: true` on create was just hardcoded). `sendOtp`/`verifyOtp` endpoints still exist and still work (and `sendOtp` really emails a code via `EmailService` now) — they're just not wired into the signup gate.
+- `frontend/src/modules/auth/CreateAccountPage.tsx` (`/register/:planType`) is a single-step form: fill in → `POST /auth/register` → `POST /auth/login` (to actually get session cookies, since `/auth/register` itself doesn't set any) → done. The multi-step OTP UI (steps "Verify Email"/"Verify Mobile") was removed because it was already broken — `handleStep1` advanced `step` to `2`/`3` but the JSX only ever rendered `step === 1` and `step === 4`, so the OTP screens were unreachable dead code before this cleanup.
+- Because the app's `RequireGuest` route guard (`frontend/src/routes/index.tsx`) redirects any authenticated user away from `/register/*` and `/login`, a successful register/login flips `isAuthenticated` in the Zustand store and the router immediately bounces to `/app/dashboard` — the "Account Created!" success screen is functionally a flash/toast, not a page you linger on. That's expected, not a bug.
+- If real OTP-gated signup is wanted later, re-add the check inside `AuthService.register()` (require a recent `verifyOtp` result for the given email/mobile before creating the user) rather than only gating in the frontend.
+
+### Sandbox networking gotcha
+
+- Bash-tool commands run sandboxed and **cannot reach Docker's published ports** (e.g. `localhost:5432`) even though the container is listening. Run anything that talks to Postgres (`prisma migrate`, `prisma db seed`, `prisma studio`, etc.) from a host-level shell (PowerShell on this machine), not the sandboxed Bash tool.
+- `npm run dev` (root) must also run from the host for the same reason — under the sandbox it'll hang forever in `PrismaService.onModuleInit()`'s `$connect()`.
+
 ## Project setup
 
 ```bash

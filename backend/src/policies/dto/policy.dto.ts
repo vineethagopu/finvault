@@ -8,12 +8,14 @@ class NomineeDto {
   @IsOptional() @IsDateString() dateOfBirth?: string
   @IsNumber() @Min(0) @Max(100) sharePercent: number
   @IsOptional() @IsString() mobile?: string
+  @IsOptional() @IsString() email?: string
   @IsOptional() @IsString() address?: string
 }
 
 export class CreatePolicyDto {
   @ApiProperty() @IsString() policyName: string
   @ApiPropertyOptional() @IsOptional() @IsString() policyNumber?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() planName?: string
   @ApiProperty() @IsString() insuranceType: string
   @ApiProperty() @IsString() provider: string
   @ApiProperty() @IsNumber() @Min(0) sumAssured: number
