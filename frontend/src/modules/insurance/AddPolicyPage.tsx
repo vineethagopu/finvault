@@ -481,7 +481,7 @@ export function AddPolicyPage() {
   const handleSave = handleSubmit(async (data) => {
     setSubmitting(true)
     try {
-      const res = await policyService.create({
+      const policy = await policyService.create({
         policyName: data.policyName,
         policyNumber: data.policyNumber || undefined,
         planName: data.planName || undefined,
@@ -504,7 +504,6 @@ export function AddPolicyPage() {
             email: n.email || undefined,
           })),
       } as any)
-      const policy = (res.data as any).data ?? (res.data as any)
 
       // Upload any attached documents, linked to the new policy.
       const uploads = DOC_TYPES.filter(d => files[d.key]).map(d =>

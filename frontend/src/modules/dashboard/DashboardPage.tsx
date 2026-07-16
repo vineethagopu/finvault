@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { useAuthStore } from '@/store/authStore'
 import { dashboardService } from '@/services/dashboardService'
+import { queryKeys } from '@/services/queryKeys'
 import { formatCurrency, formatDate, formatDateTime, getPremiumStatus } from '@/utils/formatters'
 import type { DashboardStats } from '@/types'
 
@@ -96,12 +97,8 @@ export function DashboardPage() {
   const [selectedMonth, setSelectedMonth] = useState(months[0])
 
   const { data, isLoading, isError, dataUpdatedAt } = useQuery({
-    queryKey: ['dashboard-stats', selectedMonth],
-    queryFn: async () => {
-      const res = await dashboardService.getStats(selectedMonth)
-      // Response interceptor envelope: { success, data: DashboardStats }
-      return (res.data as any).data as DashboardStats
-    },
+    queryKey: queryKeys.dashboard.stats(selectedMonth),
+    queryFn: () => dashboardService.getStats(selectedMonth),
     refetchInterval: 30_000,        // live refresh every 30s
     refetchOnWindowFocus: true,
     staleTime: 15_000,

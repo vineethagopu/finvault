@@ -14,6 +14,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { useQuery } from '@tanstack/react-query'
 import { policyService } from '@/services/policyService'
 import { beneficiaryService } from '@/services/beneficiaryService'
+import { queryKeys } from '@/services/queryKeys'
 import type { Policy } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -139,18 +140,12 @@ export function AddBeneficiaryPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const { data: policies = [] } = useQuery({
-    queryKey: ['policies'],
-    queryFn: async () => {
-      const res = await policyService.getAll()
-      return ((res.data as any).data ?? []) as Policy[]
-    },
+    queryKey: queryKeys.policies.list(),
+    queryFn: async () => (await policyService.getAll()) ?? [],
   })
   const { data: existingBeneficiaries = [] } = useQuery({
-    queryKey: ['beneficiaries'],
-    queryFn: async () => {
-      const res = await beneficiaryService.getAll()
-      return ((res.data as any).data ?? []) as { sharePercent: number }[]
-    },
+    queryKey: queryKeys.beneficiaries.list(),
+    queryFn: async () => (await beneficiaryService.getAll()) ?? [],
   })
   const totalShare = existingBeneficiaries.reduce((s, b) => s + Number(b.sharePercent), 0)
 

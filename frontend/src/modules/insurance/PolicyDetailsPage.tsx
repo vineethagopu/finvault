@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatCurrency, formatDate } from '@/utils/formatters'
 import { policyService } from '@/services/policyService'
+import { queryKeys } from '@/services/queryKeys'
 import { API_BASE_URL } from '@/constants'
 import type { Policy, PremiumPayment } from '@/types'
 import toast from 'react-hot-toast'
@@ -65,29 +66,21 @@ export function PolicyDetailsPage() {
   const [activeTab, setActiveTab] = useState('Policy Overview')
 
   const { data: policy, isLoading } = useQuery({
-    queryKey: ['policy', id],
-    queryFn: async () => {
-      const res = await policyService.getById(id as string)
-      return (res.data as any).data as Policy
-    },
+    queryKey: queryKeys.policies.detail(id),
+    queryFn: () => policyService.getById(id as string),
     enabled: !!id,
   })
 
   const { data: payments = [] } = useQuery({
-    queryKey: ['policy-payments', id],
-    queryFn: async () => {
-      const res = await policyService.getPayments(id as string)
-      return ((res.data as any).data ?? []) as PremiumPayment[]
-    },
+    queryKey: queryKeys.policies.payments(id),
+    queryFn: async () => (await policyService.getPayments<PremiumPayment[]>(id as string)) ?? [],
     enabled: !!id && activeTab === 'Premium & Payment',
   })
 
   const { data: documents = [] } = useQuery({
-    queryKey: ['policy-documents', id],
-    queryFn: async () => {
-      const res = await policyService.getDocuments(id as string)
-      return ((res.data as any).data ?? []) as { document: { id: string; name: string; mimeType: string; createdAt: string }; docType?: string }[]
-    },
+    queryKey: queryKeys.policies.documents(id),
+    queryFn: async () =>
+      (await policyService.getDocuments<{ document: { id: string; name: string; mimeType: string; createdAt: string }; docType?: string }[]>(id as string)) ?? [],
     enabled: !!id && activeTab === 'Documents',
   })
 

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatCurrency, formatDate } from '@/utils/formatters'
 import { loanService } from '@/services/loanService'
+import { queryKeys } from '@/services/queryKeys'
 import { API_BASE_URL } from '@/constants'
 import type { Loan } from '@/types'
 import toast from 'react-hot-toast'
@@ -77,29 +78,22 @@ export function LoanDetailsPage() {
   const [activeTab, setActiveTab] = useState('Overview')
 
   const { data: loan, isLoading } = useQuery({
-    queryKey: ['loan', id],
-    queryFn: async () => {
-      const res = await loanService.getById(id as string)
-      return (res.data as any).data as Loan
-    },
+    queryKey: queryKeys.loans.detail(id),
+    queryFn: () => loanService.getById(id as string),
     enabled: !!id,
   })
 
   const { data: transactions = [] } = useQuery({
-    queryKey: ['loan-transactions', id],
-    queryFn: async () => {
-      const res = await loanService.getTransactions(id as string)
-      return ((res.data as any).data ?? []) as { id: string; date: string; description: string; amount: number; type: string }[]
-    },
+    queryKey: queryKeys.loans.transactions(id),
+    queryFn: async () =>
+      (await loanService.getTransactions<{ id: string; date: string; description: string; amount: number; type: string }[]>(id as string)) ?? [],
     enabled: !!id && activeTab === 'Transactions',
   })
 
   const { data: documents = [] } = useQuery({
-    queryKey: ['loan-documents', id],
-    queryFn: async () => {
-      const res = await loanService.getDocuments(id as string)
-      return ((res.data as any).data ?? []) as { document: { id: string; name: string; mimeType: string; size: number; createdAt: string } }[]
-    },
+    queryKey: queryKeys.loans.documents(id),
+    queryFn: async () =>
+      (await loanService.getDocuments<{ document: { id: string; name: string; mimeType: string; size: number; createdAt: string } }[]>(id as string)) ?? [],
     enabled: !!id && activeTab === 'Documents',
   })
 

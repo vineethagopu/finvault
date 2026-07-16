@@ -12,6 +12,7 @@ import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatCurrency, formatDate, formatDateTime, daysFromNow } from '@/utils/formatters'
 import { INSURANCE_TYPES } from '@/constants'
 import { policyService } from '@/services/policyService'
+import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/store/authStore'
 import type { Policy } from '@/types'
 
@@ -27,11 +28,8 @@ export function InsurancePage() {
   const { user } = useAuthStore()
 
   const { data: policies = [], isLoading } = useQuery({
-    queryKey: ['policies'],
-    queryFn: async () => {
-      const res = await policyService.getAll()
-      return ((res.data as any).data ?? []) as Policy[]
-    },
+    queryKey: queryKeys.policies.list(),
+    queryFn: async () => (await policyService.getAll()) ?? [],
   })
 
   const filtered = policies.filter(p => {

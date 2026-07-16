@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/Card'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatCurrency, formatDateTime } from '@/utils/formatters'
 import { investmentService } from '@/services/investmentService'
+import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/store/authStore'
 import type { Investment } from '@/types'
 import toast from 'react-hot-toast'
@@ -150,25 +151,16 @@ export function InvestmentsPage() {
   const { user } = useAuthStore()
 
   const { data: investments = [], isLoading: loadingList } = useQuery({
-    queryKey: ['investments'],
-    queryFn: async () => {
-      const res = await investmentService.getAll()
-      return ((res.data as any).data ?? []) as Investment[]
-    },
+    queryKey: queryKeys.investments.list(),
+    queryFn: async () => (await investmentService.getAll()) ?? [],
   })
   const { data: overview, isLoading: loadingOverview } = useQuery({
-    queryKey: ['investments-overview'],
-    queryFn: async () => {
-      const res = await investmentService.getOverview()
-      return (res.data as any).data as Overview
-    },
+    queryKey: queryKeys.investments.overview(),
+    queryFn: () => investmentService.getOverview<Overview>(),
   })
   const { data: performance, isLoading: loadingPerformance } = useQuery({
-    queryKey: ['investments-performance'],
-    queryFn: async () => {
-      const res = await investmentService.getPerformance()
-      return (res.data as any).data as Performance
-    },
+    queryKey: queryKeys.investments.performance(),
+    queryFn: () => investmentService.getPerformance<Performance>(),
   })
 
   if (loadingList || loadingOverview || loadingPerformance || !overview || !performance) return <DashboardSkeleton />

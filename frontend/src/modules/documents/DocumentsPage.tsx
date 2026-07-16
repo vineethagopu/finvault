@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { formatDate } from '@/utils/formatters'
 import { documentService } from '@/services/documentService'
+import { queryKeys } from '@/services/queryKeys'
 import { API_BASE_URL } from '@/constants'
 import type { DocumentCategory } from '@/types'
 
@@ -52,11 +53,11 @@ export function DocumentsPage() {
   const [uploading, setUploading] = useState(false)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['documents', page, category, search],
-    queryFn: async () => {
-      const res = await documentService.getAll({ page, limit: 20, category: category || undefined, search: search || undefined } as any)
-      return (res.data as any) as { data: DocRow[]; meta: { total: number; pages: number; byCategory: Record<string, number> } }
-    },
+    queryKey: queryKeys.documents.list(page, category, search),
+    queryFn: () =>
+      documentService.getAll<{ data: DocRow[]; meta: { total: number; pages: number; byCategory: Record<string, number> } }>(
+        { page, limit: 20, category: category || undefined, search: search || undefined },
+      ),
   })
 
   const docs = data?.data ?? []
@@ -82,7 +83,7 @@ export function DocumentsPage() {
     try {
       await Promise.all(list.map(file => documentService.upload(file, { category: 'OTHER' })))
       toast.success(`${list.length} file${list.length > 1 ? 's' : ''} uploaded successfully!`)
-      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.documents.all() })
     } catch {
       toast.error('Some files failed to upload')
     } finally {

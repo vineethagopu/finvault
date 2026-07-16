@@ -1,22 +1,16 @@
-import api from './api'
-import type { Beneficiary, PaginationParams, ApiResponse } from '@/types'
+import { http } from './http'
+import type { Beneficiary, PaginationParams } from '@/types'
 
 export const beneficiaryService = {
-  getAll: (params?: PaginationParams) =>
-    api.get<ApiResponse<Beneficiary[]>>('/beneficiaries', { params }),
+  getAll: (params?: PaginationParams) => http.get<Beneficiary[]>('/beneficiaries', { params }),
 
-  getById: (id: string) =>
-    api.get<ApiResponse<Beneficiary>>(`/beneficiaries/${id}`),
+  getById: (id: string) => http.get<Beneficiary>(`/beneficiaries/${id}`),
 
-  create: (data: Partial<Beneficiary>) =>
-    api.post<ApiResponse<Beneficiary>>('/beneficiaries', data),
+  create: (data: Partial<Beneficiary>) => http.post<Beneficiary>('/beneficiaries', data),
 
-  update: (id: string, data: Partial<Beneficiary>) =>
-    api.patch<ApiResponse<Beneficiary>>(`/beneficiaries/${id}`, data),
+  update: (id: string, data: Partial<Beneficiary>) => http.patch<Beneficiary>(`/beneficiaries/${id}`, data),
 
-  delete: (id: string) =>
-    api.delete(`/beneficiaries/${id}`),
+  delete: (id: string) => http.del(`/beneficiaries/${id}`),
 
-  getSummary: () =>
-    api.get('/beneficiaries/summary'),
+  getSummary: <T>() => http.get<T>('/beneficiaries/summary'),
 }

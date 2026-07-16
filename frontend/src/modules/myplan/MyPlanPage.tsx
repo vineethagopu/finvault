@@ -14,6 +14,7 @@ import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatCurrency, formatDate, formatDateTime, daysFromNow } from '@/utils/formatters'
 import { policyService } from '@/services/policyService'
 import { dashboardService } from '@/services/dashboardService'
+import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/store/authStore'
 import { API_BASE_URL } from '@/constants'
 import type { Policy, DashboardStats, DuePremium } from '@/types'
@@ -669,15 +670,13 @@ function PlanDocumentsTab() {
   const [policyFilter, setPolicyFilter] = useState('All Policies')
 
   const { data: links = [], isLoading } = useQuery({
-    queryKey: ['policy-documents-all'],
-    queryFn: async () => {
-      const res = await policyService.getAllDocuments()
-      return ((res.data as any).data ?? []) as {
+    queryKey: queryKeys.policies.allDocuments(),
+    queryFn: async () =>
+      (await policyService.getAllDocuments<{
         docType?: string; createdAt: string
         document: { id: string; name: string; mimeType: string; createdAt: string }
         policy: { id: string; policyName: string; provider: string; policyNumber?: string }
-      }[]
-    },
+      }[]>()) ?? [],
   })
 
   const policyNames = [...new Set(links.map(l => l.policy.policyName))]
@@ -798,20 +797,14 @@ export function MyPlanPage() {
   const [calendarMonth] = useState(new Date())
 
   const { data: policies = [], isLoading: loadingPolicies } = useQuery({
-    queryKey: ['policies'],
-    queryFn: async () => {
-      const res = await policyService.getAll()
-      return ((res.data as any).data ?? []) as Policy[]
-    },
+    queryKey: queryKeys.policies.list(),
+    queryFn: async () => (await policyService.getAll()) ?? [],
   })
 
   const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
   const { data: stats, isLoading: loadingStats } = useQuery({
-    queryKey: ['dashboard-stats', monthLabel],
-    queryFn: async () => {
-      const res = await dashboardService.getStats(monthLabel)
-      return (res.data as any).data as DashboardStats
-    },
+    queryKey: queryKeys.dashboard.stats(monthLabel),
+    queryFn: () => dashboardService.getStats(monthLabel),
   })
 
   if (loadingPolicies || loadingStats || !stats) return <DashboardSkeleton />

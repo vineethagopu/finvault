@@ -1,25 +1,18 @@
-import api from './api'
-import type { Investment, PaginationParams, ApiResponse } from '@/types'
+import { http } from './http'
+import type { Investment, PaginationParams } from '@/types'
 
 export const investmentService = {
-  getAll: (params?: PaginationParams) =>
-    api.get<ApiResponse<Investment[]>>('/investments', { params }),
+  getAll: (params?: PaginationParams) => http.get<Investment[]>('/investments', { params }),
 
-  getById: (id: string) =>
-    api.get<ApiResponse<Investment>>(`/investments/${id}`),
+  getById: (id: string) => http.get<Investment>(`/investments/${id}`),
 
-  create: (data: Partial<Investment>) =>
-    api.post<ApiResponse<Investment>>('/investments', data),
+  create: (data: Partial<Investment>) => http.post<Investment>('/investments', data),
 
-  update: (id: string, data: Partial<Investment>) =>
-    api.patch<ApiResponse<Investment>>(`/investments/${id}`, data),
+  update: (id: string, data: Partial<Investment>) => http.patch<Investment>(`/investments/${id}`, data),
 
-  delete: (id: string) =>
-    api.delete(`/investments/${id}`),
+  delete: (id: string) => http.del(`/investments/${id}`),
 
-  getOverview: () =>
-    api.get('/investments/overview'),
+  getOverview: <T>() => http.get<T>('/investments/overview'),
 
-  getPerformance: () =>
-    api.get('/investments/performance'),
+  getPerformance: <T>() => http.get<T>('/investments/performance'),
 }

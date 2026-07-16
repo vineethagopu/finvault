@@ -1,28 +1,20 @@
-import api from './api'
-import type { Loan, PaginationParams, ApiResponse } from '@/types'
+import { http } from './http'
+import type { Loan, PaginationParams } from '@/types'
 
 export const loanService = {
-  getAll: (params?: PaginationParams) =>
-    api.get<ApiResponse<Loan[]>>('/loans', { params }),
+  getAll: (params?: PaginationParams) => http.get<Loan[]>('/loans', { params }),
 
-  getById: (id: string) =>
-    api.get<ApiResponse<Loan>>(`/loans/${id}`),
+  getById: (id: string) => http.get<Loan>(`/loans/${id}`),
 
-  create: (data: Partial<Loan>) =>
-    api.post<ApiResponse<Loan>>('/loans', data),
+  create: (data: Partial<Loan>) => http.post<Loan>('/loans', data),
 
-  update: (id: string, data: Partial<Loan>) =>
-    api.patch<ApiResponse<Loan>>(`/loans/${id}`, data),
+  update: (id: string, data: Partial<Loan>) => http.patch<Loan>(`/loans/${id}`, data),
 
-  delete: (id: string) =>
-    api.delete(`/loans/${id}`),
+  delete: (id: string) => http.del(`/loans/${id}`),
 
-  getEligibility: () =>
-    api.get('/loans/eligibility'),
+  getEligibility: <T>() => http.get<T>('/loans/eligibility'),
 
-  getDocuments: (id: string) =>
-    api.get(`/loans/${id}/documents`),
+  getDocuments: <T>(id: string) => http.get<T>(`/loans/${id}/documents`),
 
-  getTransactions: (id: string) =>
-    api.get(`/loans/${id}/transactions`),
+  getTransactions: <T>(id: string) => http.get<T>(`/loans/${id}/transactions`),
 }

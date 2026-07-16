@@ -1,40 +1,31 @@
-import api from './api'
-import type { Policy, PolicyFilters, PaginationParams, ApiResponse } from '@/types'
+import { http } from './http'
+import type { Policy, PolicyFilters, PaginationParams } from '@/types'
 
 export const policyService = {
-  getAll: (params?: PaginationParams & PolicyFilters) =>
-    api.get<ApiResponse<Policy[]>>('/policies', { params }),
+  getAll: (params?: PaginationParams & PolicyFilters) => http.get<Policy[]>('/policies', { params }),
 
-  getById: (id: string) =>
-    api.get<ApiResponse<Policy>>(`/policies/${id}`),
+  getById: (id: string) => http.get<Policy>(`/policies/${id}`),
 
-  create: (data: Record<string, unknown>) =>
-    api.post<ApiResponse<Policy>>('/policies', data),
+  create: (data: Record<string, unknown>) => http.post<Policy>('/policies', data),
 
-  update: (id: string, data: Partial<Policy>) =>
-    api.patch<ApiResponse<Policy>>(`/policies/${id}`, data),
+  update: (id: string, data: Partial<Policy>) => http.patch<Policy>(`/policies/${id}`, data),
 
-  delete: (id: string) =>
-    api.delete(`/policies/${id}`),
+  delete: (id: string) => http.del(`/policies/${id}`),
 
-  getSummary: () =>
-    api.get('/policies/summary'),
+  getSummary: <T>() => http.get<T>('/policies/summary'),
 
-  getAllDocuments: () =>
-    api.get('/policies/documents'),
+  getAllDocuments: <T>() => http.get<T>('/policies/documents'),
 
-  getDocuments: (policyId: string) =>
-    api.get(`/policies/${policyId}/documents`),
+  getDocuments: <T>(policyId: string) => http.get<T>(`/policies/${policyId}/documents`),
 
-  getPayments: (policyId: string) =>
-    api.get(`/policies/${policyId}/payments`),
+  getPayments: <T>(policyId: string) => http.get<T>(`/policies/${policyId}/payments`),
 
   addNominee: (policyId: string, data: Record<string, unknown>) =>
-    api.post(`/policies/${policyId}/nominees`, data),
+    http.post(`/policies/${policyId}/nominees`, data),
 
   updateNominee: (policyId: string, nomineeId: string, data: Record<string, unknown>) =>
-    api.patch(`/policies/${policyId}/nominees/${nomineeId}`, data),
+    http.patch(`/policies/${policyId}/nominees/${nomineeId}`, data),
 
   removeNominee: (policyId: string, nomineeId: string) =>
-    api.delete(`/policies/${policyId}/nominees/${nomineeId}`),
+    http.del(`/policies/${policyId}/nominees/${nomineeId}`),
 }

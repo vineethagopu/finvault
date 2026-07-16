@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatCurrency, formatDate } from '@/utils/formatters'
 import { loanService } from '@/services/loanService'
+import { queryKeys } from '@/services/queryKeys'
 import type { Loan } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -235,18 +236,12 @@ export function LoansPage() {
   const isEligibility = activeTab === 'Loan Eligibility'
 
   const { data: loans = [], isLoading: loadingLoans } = useQuery({
-    queryKey: ['loans'],
-    queryFn: async () => {
-      const res = await loanService.getAll()
-      return ((res.data as any).data ?? []) as Loan[]
-    },
+    queryKey: queryKeys.loans.list(),
+    queryFn: async () => (await loanService.getAll()) ?? [],
   })
   const { data: eligibility, isLoading: loadingEligibility } = useQuery({
-    queryKey: ['loans-eligibility'],
-    queryFn: async () => {
-      const res = await loanService.getEligibility()
-      return (res.data as any).data as Eligibility
-    },
+    queryKey: queryKeys.loans.eligibility(),
+    queryFn: () => loanService.getEligibility<Eligibility>(),
   })
 
   if (loadingLoans || loadingEligibility || !eligibility) return <DashboardSkeleton />

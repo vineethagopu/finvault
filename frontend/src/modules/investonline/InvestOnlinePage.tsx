@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { catalogService } from '@/services/catalogService'
+import { queryKeys } from '@/services/queryKeys'
 
 const ICONS: Record<string, React.ElementType> = {
   Gift, RefreshCw, UserRound, Briefcase, Globe, Home,
@@ -31,11 +32,8 @@ interface CatalogSection { section: string; tiles: CatalogTile[] }
 
 export function InvestOnlinePage() {
   const { data: sections = [], isLoading } = useQuery({
-    queryKey: ['catalog'],
-    queryFn: async () => {
-      const res = await catalogService.getAll()
-      return ((res.data as any).data ?? []) as CatalogSection[]
-    },
+    queryKey: queryKeys.catalog.list(),
+    queryFn: async () => (await catalogService.getAll<CatalogSection[]>()) ?? [],
   })
 
   if (isLoading) return <DashboardSkeleton />

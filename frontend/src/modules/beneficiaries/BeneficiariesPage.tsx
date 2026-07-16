@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatDate, formatDateTime, getInitials } from '@/utils/formatters'
 import { beneficiaryService } from '@/services/beneficiaryService'
+import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/store/authStore'
 import type { Beneficiary } from '@/types'
 
@@ -53,18 +54,12 @@ export function BeneficiariesPage() {
   const [page, setPage] = useState(1)
 
   const { data: beneficiaries = [], isLoading } = useQuery({
-    queryKey: ['beneficiaries'],
-    queryFn: async () => {
-      const res = await beneficiaryService.getAll()
-      return ((res.data as any).data ?? []) as BeneficiaryRow[]
-    },
+    queryKey: queryKeys.beneficiaries.list(),
+    queryFn: async () => ((await beneficiaryService.getAll()) ?? []) as BeneficiaryRow[],
   })
   const { data: summary } = useQuery({
-    queryKey: ['beneficiaries-summary'],
-    queryFn: async () => {
-      const res = await beneficiaryService.getSummary()
-      return (res.data as any).data as Summary
-    },
+    queryKey: queryKeys.beneficiaries.summary(),
+    queryFn: () => beneficiaryService.getSummary<Summary>(),
   })
 
   const filtered = useMemo(() => beneficiaries.filter(b =>

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatDateTime } from '@/utils/formatters'
 import { notificationService } from '@/services/notificationService'
+import { queryKeys } from '@/services/queryKeys'
 import toast from 'react-hot-toast'
 
 interface Notification {
@@ -40,14 +41,12 @@ export function NotificationsPage() {
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['notifications', filter, showUnreadOnly],
-    queryFn: async () => {
-      const res = await notificationService.getAll({
+    queryKey: queryKeys.notifications.list(filter, showUnreadOnly),
+    queryFn: () =>
+      notificationService.getAll<{ data: Notification[]; meta: { unreadCount: number } }>({
         category: filter === 'ALL' ? undefined : filter,
         unreadOnly: showUnreadOnly || undefined,
-      })
-      return (res.data as any) as { data: Notification[]; meta: { unreadCount: number } }
-    },
+      }),
   })
 
   const notifications = data?.data ?? []
@@ -55,15 +54,15 @@ export function NotificationsPage() {
 
   const markAllRead = async () => {
     await notificationService.markAllRead()
-    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all() })
   }
   const markRead = async (id: string) => {
     await notificationService.markRead(id)
-    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all() })
   }
   const deleteNotification = async (id: string) => {
     await notificationService.delete(id)
-    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all() })
     toast.success('Notification deleted')
   }
 

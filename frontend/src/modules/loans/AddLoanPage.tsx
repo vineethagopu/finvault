@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { loanService } from '@/services/loanService'
 import { policyService } from '@/services/policyService'
+import { queryKeys } from '@/services/queryKeys'
 import type { Policy } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -172,11 +173,9 @@ export function AddLoanPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const { data: lifePolicies = [] } = useQuery({
-    queryKey: ['policies-life-active'],
-    queryFn: async () => {
-      const res = await policyService.getAll({ insuranceType: 'LIFE', status: 'ACTIVE' } as any)
-      return ((res.data as any).data ?? []) as Policy[]
-    },
+    queryKey: queryKeys.policies.lifeActive(),
+    queryFn: async () =>
+      (await policyService.getAll({ insuranceType: 'LIFE', status: 'ACTIVE' })) ?? [],
   })
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({

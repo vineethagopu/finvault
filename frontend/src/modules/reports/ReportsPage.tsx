@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { formatCurrency } from '@/utils/formatters'
 import { reportService } from '@/services/reportService'
+import { queryKeys } from '@/services/queryKeys'
 import toast from 'react-hot-toast'
 
 interface Summary {
@@ -41,20 +42,20 @@ export function ReportsPage() {
   const navigate = useNavigate()
 
   const { data: summary, isLoading: l1 } = useQuery({
-    queryKey: ['reports-summary'],
-    queryFn: async () => { const res = await reportService.getSummary(); return (res.data as any).data as Summary },
+    queryKey: queryKeys.reports.summary(),
+    queryFn: () => reportService.getSummary<Summary>(),
   })
   const { data: netWorthTrend, isLoading: l2 } = useQuery({
-    queryKey: ['reports-net-worth-trend'],
-    queryFn: async () => { const res = await reportService.getNetWorthTrend(); return (res.data as any).data as NetWorthTrend },
+    queryKey: queryKeys.reports.netWorthTrend(),
+    queryFn: () => reportService.getNetWorthTrend<NetWorthTrend>(),
   })
   const { data: premiumTrend, isLoading: l3 } = useQuery({
-    queryKey: ['reports-premium-trend'],
-    queryFn: async () => { const res = await reportService.getPremiumTrend(); return (res.data as any).data as PremiumTrend },
+    queryKey: queryKeys.reports.premiumTrend(),
+    queryFn: () => reportService.getPremiumTrend<PremiumTrend>(),
   })
   const { data: taxSummary, isLoading: l4 } = useQuery({
-    queryKey: ['reports-tax-summary'],
-    queryFn: async () => { const res = await reportService.getTaxSummary(); return (res.data as any).data as TaxSummary },
+    queryKey: queryKeys.reports.taxSummary(),
+    queryFn: () => reportService.getTaxSummary<TaxSummary>(),
   })
 
   if (l1 || l2 || l3 || l4 || !summary || !netWorthTrend || !premiumTrend || !taxSummary) return <DashboardSkeleton />
