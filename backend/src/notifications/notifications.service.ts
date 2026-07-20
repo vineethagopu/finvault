@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { EventsService } from '../events/events.service'
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventsService,
+  ) {}
 
   async findAll(userId: string, query: any) {
     const { page = 1, limit = 30, category, unreadOnly } = query
@@ -25,6 +29,7 @@ export class NotificationsService {
       where: { id, userId },
       data: { isRead: true, readAt: new Date() },
     })
+    this.events.emit(userId, { type: 'notification.changed' })
     return { message: 'Marked as read' }
   }
 
@@ -33,15 +38,19 @@ export class NotificationsService {
       where: { userId, isRead: false },
       data: { isRead: true, readAt: new Date() },
     })
+    this.events.emit(userId, { type: 'notification.changed' })
     return { message: 'All notifications marked as read' }
   }
 
   async delete(userId: string, id: string) {
     await this.prisma.notification.deleteMany({ where: { id, userId } })
+    this.events.emit(userId, { type: 'notification.changed' })
     return { message: 'Notification deleted' }
   }
 
   async create(userId: string, data: { type: any; category: any; title: string; message: string; data?: any }) {
-    return this.prisma.notification.create({ data: { ...data, userId } })
+    const notification = await this.prisma.notification.create({ data: { ...data, userId } })
+    this.events.emit(userId, { type: 'notification.created' })
+    return notification
   }
 }

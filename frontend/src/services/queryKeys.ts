@@ -32,6 +32,7 @@ export const queryKeys = {
     summary: () => ['beneficiaries-summary'],
   },
   dashboard: {
+    all: () => ['dashboard-stats'],
     stats: (month?: string) => ['dashboard-stats', month],
   },
   documents: {

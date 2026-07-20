@@ -3,9 +3,11 @@ import { Outlet } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
+import { useServerEvents } from '@/hooks/useServerEvents'
 
 export function AppLayout() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  useServerEvents() // live updates (notifications, dashboard) via SSE — no reload
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
