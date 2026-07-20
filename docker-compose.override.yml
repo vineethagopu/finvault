@@ -24,16 +24,27 @@ services:
       NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-policynext}:${POSTGRES_PASSWORD:-dev_password}@postgres:5432/${POSTGRES_DB:-policynext}?schema=public
       REDIS_URL: redis://:${REDIS_PASSWORD:-dev_redis}@redis:6379
-      JWT_ACCESS_SECRET: dev-access-secret-change-in-prod
-      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-prod
-      JWT_ACCESS_EXPIRES_IN: 15m
-      CORS_ORIGIN: http://localhost:5173
-      ENCRYPTION_KEY: dev-encryption-key-32-chars-here
+      # Secrets/config resolve from the root .env (single source of truth);
+      # the :- fallbacks keep today's dev defaults so nothing breaks if unset.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-in-prod}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-prod}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-32-chars-here}
       UPLOAD_DIR: /app/uploads
       PORT: 3000
       # Poll the bind mount so Nest's watch picks up src/ edits in Docker.
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
+      # Email/SMS — empty = dev fallbacks (Ethereal test inbox / console OTP echo).
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      TWILIO_SID: ${TWILIO_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
     volumes:
       - ./backend/src:/app/src:delegated
       - ./backend/prisma:/app/prisma:delegated
