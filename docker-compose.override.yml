@@ -31,6 +31,9 @@ services:
       ENCRYPTION_KEY: dev-encryption-key-32-chars-here
       UPLOAD_DIR: /app/uploads
       PORT: 3000
+      # Poll the bind mount so Nest's watch picks up src/ edits in Docker.
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
     volumes:
       - ./backend/src:/app/src:delegated
       - ./backend/prisma:/app/prisma:delegated
@@ -53,9 +56,12 @@ services:
     tty: true
     environment:
       VITE_API_URL: http://localhost:3000/api/v1
+      # Poll the bind mount so edits under src/ hot-reload (no rebuild needed).
+      VITE_USE_POLLING: "true"
     volumes:
       - ./frontend/src:/app/src:delegated
       - ./frontend/index.html:/app/index.html:delegated
+      - ./frontend/vite.config.ts:/app/vite.config.ts:delegated
     ports:
       - "5173:5173"
     depends_on:

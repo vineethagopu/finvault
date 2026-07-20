@@ -14,7 +14,12 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
     port: 5173,
+    // In Docker on Windows/macOS, bind-mount file events don't reach the
+    // container's watcher — enable polling there (via VITE_USE_POLLING) so
+    // edits under src/ hot-reload without a rebuild. Left off for local runs.
+    watch: { usePolling: !!process.env.VITE_USE_POLLING, interval: 100 },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
