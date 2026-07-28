@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -6,12 +6,12 @@ import { z } from 'zod'
 import { motion } from 'framer-motion'
 import {
   Lock, User, Shield, ShieldCheck, TrendingUp, Users, FileCheck2,
-  ArrowRight, Send, Smartphone, HelpCircle,
+  ArrowRight, Send, Smartphone, HelpCircle, Eye, EyeOff, AtSign,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { OtpInput } from '@/components/ui/OtpInput'
 import { Logo } from '@/components/layout/Logo'
+import { cn } from '@/utils/cn'
 import { authService } from '@/services/authService'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -33,10 +33,10 @@ type OtpForm = z.infer<typeof otpSchema>
 const NAV = ['Features', 'How It Works', 'About Us', 'Pricing', 'Contact']
 
 const FEATURES = [
-  { icon: FileCheck2, label: 'All Policies in One Place', color: 'text-green-600', bg: 'bg-green-50' },
-  { icon: TrendingUp, label: 'Track Investments & Loans', color: 'text-blue-600', bg: 'bg-blue-50' },
-  { icon: Users, label: 'Family Access After You', color: 'text-purple-600', bg: 'bg-purple-50' },
-  { icon: Lock, label: '100% Secure & Private', color: 'text-amber-600', bg: 'bg-amber-50' },
+  { icon: FileCheck2, l1: 'All Policies', l2: 'in One Place', color: 'text-green-600', bg: 'bg-green-50' },
+  { icon: TrendingUp, l1: 'Track Investments', l2: '& Loans', color: 'text-blue-600', bg: 'bg-blue-50' },
+  { icon: Users, l1: 'Family Access', l2: 'After You', color: 'text-purple-600', bg: 'bg-purple-50' },
+  { icon: Lock, l1: '100% Secure', l2: '& Private', color: 'text-amber-600', bg: 'bg-amber-50' },
 ]
 
 const TRUST = [
@@ -45,12 +45,67 @@ const TRUST = [
   { icon: Users, label: 'Trusted by Thousands', desc: 'Families across India', color: 'text-green-600', bg: 'bg-green-50' },
 ]
 
-function LandscapeArt() {
+/* ── Field: label rendered *inside* the bordered box, icon centred on the left ── */
+interface FieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  label: string
+  icon: React.ReactNode
+  error?: string
+}
+
+const Field = React.forwardRef<HTMLInputElement, FieldProps>(
+  ({ label, icon, error, type, id, ...props }, ref) => {
+    const [reveal, setReveal] = useState(false)
+    const isPassword = type === 'password'
+    const fieldId = id || props.name
+
+    return (
+      <div>
+        <div
+          className={cn(
+            'flex items-center gap-3 rounded-xl border bg-white px-3.5 py-2 transition-all duration-150 sm:gap-3.5 sm:px-4 sm:py-2.5',
+            'focus-within:border-green-500 focus-within:ring-2 focus-within:ring-green-100',
+            error ? 'border-red-300' : 'border-slate-200',
+          )}
+        >
+          <span className="shrink-0">{icon}</span>
+          <div className="min-w-0 flex-1">
+            <label htmlFor={fieldId} className="block cursor-text truncate text-xs font-medium text-slate-600 sm:text-[13px]">
+              {label}
+            </label>
+            <input
+              ref={ref}
+              id={fieldId}
+              type={isPassword ? (reveal ? 'text' : 'password') : type}
+              // focus ring lives on the wrapper — suppress the global :focus-visible outline here
+              className="w-full border-0 bg-transparent p-0 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 sm:text-[15px]"
+              {...props}
+            />
+          </div>
+          {isPassword && (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={reveal ? 'Hide password' : 'Show password'}
+              onClick={() => setReveal(v => !v)}
+              className="shrink-0 text-slate-400 transition-colors hover:text-slate-600"
+            >
+              {reveal ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          )}
+        </div>
+        {error && <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>}
+      </div>
+    )
+  },
+)
+Field.displayName = 'Field'
+
+function LandscapeArt({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 600 200" preserveAspectRatio="xMidYMax slice" className="h-full w-full">
+    <svg viewBox="0 0 600 200" preserveAspectRatio="xMidYMax slice" className={className} aria-hidden="true">
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#eef6ff" />
+          <stop offset="0%" stopColor="#eef6ff" stopOpacity="0" />
           <stop offset="100%" stopColor="#e6f7ee" />
         </linearGradient>
       </defs>
@@ -152,11 +207,17 @@ export function LoginPage() {
     }
   }
 
+  const tabClass = (active: boolean) =>
+    cn(
+      'flex flex-1 items-center justify-center gap-1.5 border-b-2 px-1 pb-3 text-xs font-semibold transition-colors sm:gap-2 sm:text-sm',
+      active ? 'border-green-600 text-green-700' : 'border-transparent text-slate-400 hover:text-slate-600',
+    )
+
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-white via-[#f7fafd] to-[#eff7f3]">
       {/* ─── Navbar ─────────────────────────────────────────────── */}
       <header className="z-20 shrink-0 border-b border-slate-100 bg-white">
-        <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Logo size="md" />
           <nav className="hidden items-center gap-6 lg:flex xl:gap-8">
             {NAV.map(item => (
@@ -178,105 +239,133 @@ export function LoginPage() {
       </header>
 
       {/* ─── Body split ─────────────────────────────────────────── */}
-      <main className="flex flex-1 flex-col lg:flex-row">
+      <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col lg:flex-row lg:items-stretch">
         {/* Left marketing panel */}
-        <section className="relative hidden flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-white to-green-50/50 lg:flex lg:w-[52%]">
-          <div className="flex flex-1 flex-col px-10 pt-6 xl:px-16 xl:pt-9 2xl:pt-12">
-            <span className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-semibold text-green-700 shadow-sm 2xl:mb-7">
-              <Shield size={13} /> Secure. Private. Trusted.
+        <section className="relative flex flex-col overflow-hidden px-5 pb-8 pt-8 sm:px-8 lg:w-[46%] lg:shrink-0 lg:pb-0 lg:pl-10 lg:pr-8 lg:pt-10 xl:pl-14 xl:pr-10">
+          <div className="relative z-10 flex flex-1 flex-col">
+            <span className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-green-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-green-700 shadow-sm sm:text-[13px] xl:mb-7">
+              <Shield size={14} /> Secure. Private. Trusted.
             </span>
-            <h1 className="text-3xl font-extrabold leading-tight text-[#0f2952] xl:text-[2.6rem] xl:leading-[1.15]">
-              If something happens<br />to you,<br />
+
+            <h1 className="text-[26px] font-extrabold leading-[1.2] tracking-tight text-[#0f2952] sm:text-4xl lg:text-[32px] xl:text-[40px] xl:leading-[1.18]">
+              If something happens<br className="hidden sm:inline" /> to you,<br />
               <span className="text-green-600">
-                your family should<br />still know{' '}
-                <span className="underline decoration-green-400 decoration-2 underline-offset-4">everything.</span>
+                your family should<br className="hidden sm:inline" /> still know{' '}
+                <span className="underline decoration-green-400 decoration-[3px] underline-offset-[6px]">everything.</span>
               </span>
             </h1>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-slate-600 2xl:mt-6">
-              PolicyNext helps you securely track all your policies, investments, loans and important documents and gives your family access when they need it most.
+
+            <p className="mt-4 max-w-lg text-sm leading-relaxed text-slate-600 sm:text-[15px] xl:mt-6">
+              PolicyNext helps you securely track all your policies, investments, loans and important
+              documents and gives your family access when they need it most.
             </p>
-            <div className="mt-6 grid grid-cols-4 gap-3 2xl:mt-9">
-              {FEATURES.map(({ icon: Icon, label, color, bg }) => (
-                <div key={label} className="flex flex-col items-center gap-2 text-center">
-                  <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${bg}`}>
-                    <Icon size={20} className={color} />
+
+            {/* Feature strip — divided cells, exactly 4 across */}
+            <div className="mt-7 grid max-w-lg grid-cols-4 divide-x divide-slate-200/80 xl:mt-9">
+              {FEATURES.map(({ icon: Icon, l1, l2, color, bg }) => (
+                <div key={l1} className="flex flex-col items-center gap-2.5 px-1.5 text-center sm:px-3">
+                  <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl sm:h-14 sm:w-14', bg)}>
+                    <Icon size={22} className={color} />
                   </div>
-                  <p className="text-xs font-bold leading-snug text-slate-700">{label}</p>
+                  <p className="text-[11px] font-bold leading-snug text-slate-700 sm:text-[13px]">
+                    {l1}<br />{l2}
+                  </p>
                 </div>
               ))}
             </div>
           </div>
-          <div className="mt-auto h-32 w-full shrink-0 xl:h-40 2xl:h-48">
-            <LandscapeArt />
+
+          {/* Landscape sits flush to the bottom of the panel on large screens */}
+          <div className="pointer-events-none mt-8 -mx-5 h-28 shrink-0 sm:-mx-8 lg:absolute lg:inset-x-0 lg:bottom-0 lg:mx-0 lg:mt-0 lg:h-40 xl:h-48">
+            <LandscapeArt className="h-full w-full" />
           </div>
         </section>
 
         {/* Right login panel */}
-        <section className="flex flex-1 items-center justify-center px-4 py-8 sm:px-8">
+        <section className="flex flex-1 items-center justify-center px-4 pb-8 pt-2 sm:px-8 lg:py-10 xl:px-12">
           <motion.div
-            className="w-full max-w-md"
+            className="w-full max-w-[600px]"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-xl sm:p-8">
-              <div className="mb-5 text-center">
-                <h2 className="text-2xl font-bold text-slate-900">Welcome Back!</h2>
-                <p className="mt-1 text-sm text-slate-500">Login to access your secure account</p>
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_10px_40px_-12px_rgba(15,42,82,0.18)] sm:p-8 lg:p-10">
+              <div className="text-center">
+                <h2 className="text-2xl font-extrabold tracking-tight text-[#0f2952] sm:text-[28px]">Welcome Back!</h2>
+                <p className="mt-1.5 text-sm text-slate-500 sm:text-[15px]">Login to access your secure account</p>
               </div>
 
               {/* Tabs */}
-              <div className="mb-6 flex border-b border-slate-200">
-                <button
-                  onClick={() => setTab('password')}
-                  className={`flex flex-1 items-center justify-center gap-2 border-b-2 pb-3 text-sm font-semibold transition-colors ${tab === 'password' ? 'border-green-600 text-green-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-                >
-                  <Lock size={14} /> Login with Password
+              <div className="mt-6 flex border-b border-slate-200 sm:mt-7">
+                <button type="button" onClick={() => setTab('password')} className={tabClass(tab === 'password')}>
+                  <Lock size={16} className="shrink-0" />
+                  <span className="hidden sm:inline">Login with Password</span>
+                  <span className="sm:hidden">Password</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => { setTab('otp'); setOtpSent(false); setOtp('') }}
-                  className={`flex flex-1 items-center justify-center gap-2 border-b-2 pb-3 text-sm font-semibold transition-colors ${tab === 'otp' ? 'border-green-600 text-green-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                  className={tabClass(tab === 'otp')}
                 >
-                  <Smartphone size={14} /> Login with Mobile or Email OTP
+                  <Smartphone size={16} className="shrink-0" />
+                  <span className="hidden sm:inline">Login with Mobile or Email OTP</span>
+                  <span className="sm:hidden">Mobile / Email OTP</span>
                 </button>
               </div>
 
               {/* Password Login */}
               {tab === 'password' && (
-                <form onSubmit={passwordForm.handleSubmit(handlePasswordLogin)} className="space-y-4">
-                  <Input
-                    label="User Name (User ID)"
-                    placeholder="Enter your user name (User ID)"
-                    leftIcon={<User size={15} />}
-                    {...passwordForm.register('username')}
-                    error={passwordForm.formState.errors.username?.message}
-                  />
-                  <Input
-                    label="Password"
-                    type="password"
-                    placeholder="Enter your password"
-                    leftIcon={<Lock size={15} />}
-                    {...passwordForm.register('password')}
-                    error={passwordForm.formState.errors.password?.message}
-                  />
-                  <div className="flex items-center justify-between">
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <input type="checkbox" className="rounded border-slate-300 text-green-600" {...passwordForm.register('rememberMe')} />
-                      <span className="text-sm text-slate-600">Remember me</span>
-                    </label>
-                    <Link to="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-700">Forgot Password?</Link>
+                <form onSubmit={passwordForm.handleSubmit(handlePasswordLogin)} className="mt-6">
+                  <div className="space-y-3.5 sm:space-y-4">
+                    <Field
+                      label="User Name (User ID)"
+                      placeholder="Enter your user name (User ID)"
+                      autoComplete="username"
+                      icon={<User size={20} className="text-slate-400" />}
+                      {...passwordForm.register('username')}
+                      error={passwordForm.formState.errors.username?.message}
+                    />
+                    <Field
+                      label="Password"
+                      type="password"
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      icon={<Lock size={20} className="text-green-600" />}
+                      {...passwordForm.register('password')}
+                      error={passwordForm.formState.errors.password?.message}
+                    />
                   </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex cursor-pointer items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-green-600 focus:ring-green-500"
+                        {...passwordForm.register('rememberMe')}
+                      />
+                      <span className="text-sm text-slate-600 sm:text-[15px]">Remember me</span>
+                    </label>
+                    <Link to="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-700 sm:text-[15px]">
+                      Forgot Password?
+                    </Link>
+                  </div>
+
                   <Button
                     type="submit"
-                    className="w-full"
-                    size="lg"
+                    className="mt-5 h-12 w-full rounded-xl bg-green-700 text-base hover:bg-green-800 sm:h-[52px]"
                     loading={passwordForm.formState.isSubmitting}
-                    leftIcon={<Lock size={15} />}
+                    leftIcon={<Lock size={18} />}
                   >
                     Login
                   </Button>
-                  <p className="text-center text-sm text-slate-400">or</p>
-                  <p className="text-center text-sm text-slate-600">
+
+                  <div className="mt-5 flex items-center gap-4">
+                    <span className="h-px flex-1 bg-slate-200" />
+                    <span className="text-sm text-slate-400">or</span>
+                    <span className="h-px flex-1 bg-slate-200" />
+                  </div>
+
+                  <p className="mt-4 text-center text-sm text-slate-600 sm:text-[15px]">
                     Don't have an account?{' '}
                     <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700">Create an account</Link>
                   </p>
@@ -285,40 +374,47 @@ export function LoginPage() {
 
               {/* OTP Login */}
               {tab === 'otp' && (
-                <div className="space-y-4">
+                <div className="mt-6">
                   {!otpSent ? (
-                    <form onSubmit={otpForm.handleSubmit(handleSendOtp)} className="space-y-4">
-                      <Input
-                        label="User Name (User ID)"
-                        placeholder="Enter your user name (User ID)"
-                        leftIcon={<User size={15} />}
-                        {...otpForm.register('username')}
-                        error={otpForm.formState.errors.username?.message}
-                      />
-                      <Input
-                        label="Mobile Number / Email Address"
-                        placeholder="Enter mobile number or email address"
-                        leftIcon={<Smartphone size={15} />}
-                        {...otpForm.register('contactInfo')}
-                        error={otpForm.formState.errors.contactInfo?.message}
-                      />
+                    <form onSubmit={otpForm.handleSubmit(handleSendOtp)}>
+                      <div className="space-y-3.5 sm:space-y-4">
+                        <Field
+                          label="User Name (User ID)"
+                          placeholder="Enter your user name (User ID)"
+                          autoComplete="username"
+                          icon={<User size={20} className="text-slate-400" />}
+                          {...otpForm.register('username')}
+                          error={otpForm.formState.errors.username?.message}
+                        />
+                        <Field
+                          label="Mobile Number / Email Address"
+                          placeholder="Enter mobile number or email address"
+                          icon={<AtSign size={20} className="text-green-600" />}
+                          {...otpForm.register('contactInfo')}
+                          error={otpForm.formState.errors.contactInfo?.message}
+                        />
+                      </div>
+
                       <Button
                         type="submit"
-                        className="w-full"
-                        size="lg"
+                        className="mt-5 h-12 w-full rounded-xl bg-green-700 text-base hover:bg-green-800 sm:h-[52px]"
                         loading={sendingOtp}
-                        leftIcon={<Send size={15} />}
+                        leftIcon={<Send size={18} />}
                       >
                         Send OTP
                       </Button>
-                      <p className="text-center text-xs text-slate-500">
+
+                      <p className="mt-3 text-center text-xs text-slate-500 sm:text-[13px]">
                         We will send a 6-digit OTP to your mobile number or email
                       </p>
-                      <div className="flex items-start gap-3 rounded-xl border border-green-100 bg-green-50 p-3">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-green-100">
-                          <Lock size={13} className="text-green-600" />
+
+                      <div className="mt-4 flex items-start gap-3 rounded-xl border border-green-100 bg-green-50 p-3.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-100">
+                          <Lock size={14} className="text-green-600" />
                         </div>
-                        <p className="text-xs text-green-700">Your data is protected with bank-level security and 256-bit encryption</p>
+                        <p className="text-xs leading-relaxed text-green-700 sm:text-[13px]">
+                          Your data is protected with bank-level security and 256-bit encryption
+                        </p>
                       </div>
                     </form>
                   ) : (
@@ -333,14 +429,27 @@ export function LoginPage() {
                       <OtpInput value={otp} onChange={setOtp} autoFocus />
                       <div className="flex items-center justify-between text-xs text-slate-500">
                         <span>Resend OTP in 00:45</span>
-                        <button className="font-medium text-green-600" onClick={() => setOtpSent(false)}>Change Contact</button>
+                        <button type="button" className="font-medium text-green-600" onClick={() => setOtpSent(false)}>
+                          Change Contact
+                        </button>
                       </div>
-                      <Button className="w-full" size="lg" onClick={handleOtpLogin} rightIcon={<ArrowRight size={15} />}>
+                      <Button
+                        className="h-12 w-full rounded-xl bg-green-700 text-base hover:bg-green-800 sm:h-[52px]"
+                        onClick={handleOtpLogin}
+                        rightIcon={<ArrowRight size={18} />}
+                      >
                         Verify & Login
                       </Button>
                     </div>
                   )}
-                  <p className="text-center text-sm text-slate-600">
+
+                  <div className="mt-5 flex items-center gap-4">
+                    <span className="h-px flex-1 bg-slate-200" />
+                    <span className="text-sm text-slate-400">or</span>
+                    <span className="h-px flex-1 bg-slate-200" />
+                  </div>
+
+                  <p className="mt-4 text-center text-sm text-slate-600 sm:text-[15px]">
                     New to PolicyNext?{' '}
                     <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700">Create an account</Link>
                   </p>
@@ -362,16 +471,16 @@ export function LoginPage() {
       </main>
 
       {/* ─── Trust bar ──────────────────────────────────────────── */}
-      <footer className="z-10 shrink-0 px-3 pb-3 sm:px-6 sm:pb-4 lg:bg-transparent">
-        <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-3 rounded-2xl border border-slate-100 bg-white px-6 py-4 shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-slate-100">
+      <footer className="z-10 shrink-0 px-4 pb-4 sm:px-6 sm:pb-5">
+        <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-white px-6 py-4 shadow-sm sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-slate-100 sm:py-5">
           {TRUST.map(({ icon: Icon, label, desc, color, bg }) => (
-            <div key={label} className="flex items-center justify-center gap-3">
-              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${bg}`}>
-                <Icon size={17} className={color} />
+            <div key={label} className="flex items-center justify-center gap-3 px-2">
+              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', bg)}>
+                <Icon size={18} className={color} />
               </div>
-              <div>
-                <p className="text-sm font-bold text-slate-800">{label}</p>
-                <p className="text-xs text-slate-500">{desc}</p>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-800 sm:text-[15px]">{label}</p>
+                <p className="text-xs text-slate-500 sm:text-[13px]">{desc}</p>
               </div>
             </div>
           ))}
