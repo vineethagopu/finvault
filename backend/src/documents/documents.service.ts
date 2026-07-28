@@ -3,6 +3,7 @@ import {
   BadRequestException, Logger,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { EventsService } from '../events/events.service'
 import { UploadDocumentDto, DocumentFiltersDto } from './dto/document.dto'
 import * as path from 'path'
 import * as fs from 'fs/promises'
@@ -21,7 +22,10 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads'
 export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name)
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventsService,
+  ) {}
 
   async findAll(userId: string, filters: DocumentFiltersDto) {
     const page = parseInt(filters.page || '1', 10)
@@ -118,6 +122,9 @@ export class DocumentsService {
       },
     })
 
+    // Push a live update so the Documents list and Dashboard refresh without a
+    // manual reload — including in other open tabs/devices.
+    this.events.emit(userId, { type: 'document.changed' })
     return {
       data: {
         id: document.id,
@@ -150,6 +157,7 @@ export class DocumentsService {
     }
 
     await this.prisma.document.delete({ where: { id } })
+    this.events.emit(userId, { type: 'document.changed' })
     return { message: 'Document deleted' }
   }
 }

@@ -1,24 +1,36 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Bell, HelpCircle, ChevronDown, Menu, LogOut, User, Shield } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { Avatar } from '@/components/ui/Avatar'
 import { authService } from '@/services/authService'
+import { notificationService } from '@/services/notificationService'
 import toast from 'react-hot-toast'
 
 interface TopbarProps {
   onMenuClick: () => void
-  alertCount?: number
 }
 
-export function Topbar({ onMenuClick, alertCount = 0 }: TopbarProps) {
+export function Topbar({ onMenuClick }: TopbarProps) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const [profileOpen, setProfileOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+
+  // Shares the 'notifications' query-key prefix with the Notifications page, so
+  // the SSE handler's `notifications.all()` invalidation keeps this badge live
+  // too — no polling, no manual reload.
+  const { data: alertCount = 0 } = useQuery({
+    queryKey: ['notifications', 'unread-badge'],
+    queryFn: async () => {
+      const res = await notificationService.getAll<{ meta: { unreadCount: number } }>({ unreadOnly: true, limit: 1 })
+      return res.meta.unreadCount
+    },
+  })
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -60,9 +72,9 @@ export function Topbar({ onMenuClick, alertCount = 0 }: TopbarProps) {
                 className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-100 rounded-xl shadow-lg py-1 z-50"
                 initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
               >
-                <button className="w-full px-4 py-2 text-sm text-left text-slate-600 hover:bg-slate-50" onClick={() => setHelpOpen(false)}>Help Center</button>
-                <button className="w-full px-4 py-2 text-sm text-left text-slate-600 hover:bg-slate-50" onClick={() => setHelpOpen(false)}>Contact Support</button>
-                <button className="w-full px-4 py-2 text-sm text-left text-slate-600 hover:bg-slate-50" onClick={() => setHelpOpen(false)}>FAQs</button>
+                <button className="w-full px-4 py-2 text-sm text-left text-slate-600 hover:bg-slate-50" onClick={() => { setHelpOpen(false); toast('Help Center is coming soon') }}>Help Center</button>
+                <button className="w-full px-4 py-2 text-sm text-left text-slate-600 hover:bg-slate-50" onClick={() => { setHelpOpen(false); toast.success('Connecting you to support') }}>Contact Support</button>
+                <button className="w-full px-4 py-2 text-sm text-left text-slate-600 hover:bg-slate-50" onClick={() => { setHelpOpen(false); toast('FAQs are coming soon') }}>FAQs</button>
               </motion.div>
             )}
           </AnimatePresence>

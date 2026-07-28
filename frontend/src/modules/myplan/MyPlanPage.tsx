@@ -775,7 +775,10 @@ function PlanDocumentsTab() {
 
       <InfoBanner
         action={
-          <button className="text-xs font-medium text-slate-600 border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap">
+          <button
+            onClick={() => toast.success('Connecting you to support')}
+            className="text-xs font-medium text-slate-600 border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap"
+          >
             <Headphones size={12} /> Contact Support
           </button>
         }

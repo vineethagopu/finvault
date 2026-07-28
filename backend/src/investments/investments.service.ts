@@ -1,12 +1,20 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { EventsService } from '../events/events.service'
 
 @Injectable()
 export class InvestmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventsService,
+  ) {}
 
   async findAll(userId: string, query: any) {
-    const { page = 1, limit = 20, investmentType, assetClass, search } = query
+    // Query params always arrive as strings; Prisma's `take`/`skip` require real
+    // numbers, so coerce explicitly instead of trusting the destructured defaults.
+    const page = Number(query.page) > 0 ? Number(query.page) : 1
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20
+    const { investmentType, assetClass, search } = query
     const where: any = { userId }
     if (investmentType) where.investmentType = investmentType
     if (assetClass) where.assetClass = assetClass
@@ -45,6 +53,9 @@ export class InvestmentsService {
     await this.prisma.investmentSnapshot.create({
       data: { investmentId: investment.id, userId, value: investment.currentValue },
     })
+    // Push a live update so the Investments list and Dashboard refresh without
+    // a manual reload — including in other open tabs/devices.
+    this.events.emit(userId, { type: 'investment.changed' })
     return { data: investment, message: 'Investment added' }
   }
 
@@ -56,12 +67,14 @@ export class InvestmentsService {
         data: { investmentId: id, userId, value: investment.currentValue },
       })
     }
+    this.events.emit(userId, { type: 'investment.changed' })
     return { data: investment, message: 'Investment updated' }
   }
 
   async remove(userId: string, id: string) {
     await this.assertOwnership(userId, id)
     await this.prisma.investment.delete({ where: { id } })
+    this.events.emit(userId, { type: 'investment.changed' })
     return { message: 'Investment removed' }
   }
 

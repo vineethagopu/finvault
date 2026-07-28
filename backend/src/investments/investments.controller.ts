@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { InvestmentsService } from './investments.service'
+import { CreateInvestmentDto, UpdateInvestmentDto } from './dto/investment.dto'
 
 @ApiTags('Investments')
 @ApiBearerAuth()
@@ -15,7 +16,7 @@ export class InvestmentsController {
   @Get('overview') getOverview(@CurrentUser('id') uid: string) { return this.service.getOverview(uid) }
   @Get('performance') getPerformance(@CurrentUser('id') uid: string) { return this.service.getPerformance(uid) }
   @Get(':id') findOne(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.findOne(uid, id) }
-  @Post() create(@CurrentUser('id') uid: string, @Body() dto: any) { return this.service.create(uid, dto) }
-  @Patch(':id') update(@CurrentUser('id') uid: string, @Param('id') id: string, @Body() dto: any) { return this.service.update(uid, id, dto) }
+  @Post() create(@CurrentUser('id') uid: string, @Body() dto: CreateInvestmentDto) { return this.service.create(uid, dto) }
+  @Patch(':id') update(@CurrentUser('id') uid: string, @Param('id') id: string, @Body() dto: UpdateInvestmentDto) { return this.service.update(uid, id, dto) }
   @Delete(':id') @HttpCode(HttpStatus.OK) remove(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.remove(uid, id) }
 }

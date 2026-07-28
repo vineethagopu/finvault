@@ -31,9 +31,29 @@ export function useServerEvents(): void {
       } catch {
         return
       }
+
+      // Every domain event also touches the Dashboard, since it aggregates
+      // policies/investments/loans/notifications into one summary.
+      if (type) queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() })
+
       if (type.startsWith('notification')) {
         queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() })
+      } else if (type.startsWith('policy')) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.policies.list() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.policies.lifeActive() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.policies.allDocuments() })
+      } else if (type.startsWith('investment')) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.investments.list() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.investments.overview() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.investments.performance() })
+      } else if (type.startsWith('loan')) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.loans.list() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.loans.eligibility() })
+      } else if (type.startsWith('beneficiary')) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.beneficiaries.list() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.beneficiaries.summary() })
+      } else if (type.startsWith('document')) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.documents.all() })
       }
     }
 

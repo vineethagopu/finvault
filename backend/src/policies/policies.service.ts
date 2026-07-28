@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { InsuranceType, PolicyStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { EventsService } from '../events/events.service'
 import { CreatePolicyDto, UpdatePolicyDto, PolicyFiltersDto } from './dto/policy.dto'
 
 @Injectable()
 export class PoliciesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventsService,
+  ) {}
 
   async findAll(userId: string, filters: PolicyFiltersDto) {
     const { page = 1, limit = 20, insuranceType, status, search } = filters
@@ -67,6 +71,9 @@ export class PoliciesService {
       include: { nominees: true },
     })
 
+    // Push a live update so the Insurance list, My Plan and Dashboard refresh
+    // without a manual reload — including in other open tabs/devices.
+    this.events.emit(userId, { type: 'policy.changed' })
     return { data: policy, message: 'Policy created successfully' }
   }
 
@@ -87,12 +94,14 @@ export class PoliciesService {
       include: { nominees: true },
     })
 
+    this.events.emit(userId, { type: 'policy.changed' })
     return { data: policy, message: 'Policy updated' }
   }
 
   async remove(userId: string, id: string) {
     await this.assertOwnership(userId, id)
     await this.prisma.policy.delete({ where: { id } })
+    this.events.emit(userId, { type: 'policy.changed' })
     return { message: 'Policy deleted' }
   }
 

@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { EventsService } from '../events/events.service'
 
 @Injectable()
 export class BeneficiariesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventsService,
+  ) {}
 
   async findAll(userId: string) {
     const data = await this.prisma.beneficiary.findMany({
@@ -60,6 +64,9 @@ export class BeneficiariesService {
     const beneficiary = await this.prisma.beneficiary.create({
       data: { ...rest, userId, ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }) },
     })
+    // Push a live update so the Beneficiaries list refreshes without a manual
+    // reload — including in other open tabs/devices.
+    this.events.emit(userId, { type: 'beneficiary.changed' })
     return { data: beneficiary, message: 'Beneficiary added' }
   }
 
@@ -70,12 +77,14 @@ export class BeneficiariesService {
       where: { id },
       data: { ...rest, ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }) },
     })
+    this.events.emit(userId, { type: 'beneficiary.changed' })
     return { data: beneficiary }
   }
 
   async remove(userId: string, id: string) {
     await this.assertOwnership(userId, id)
     await this.prisma.beneficiary.delete({ where: { id } })
+    this.events.emit(userId, { type: 'beneficiary.changed' })
     return { message: 'Beneficiary removed' }
   }
 

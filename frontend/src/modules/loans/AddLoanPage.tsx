@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm, type UseFormRegisterReturn } from 'react-hook-form'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'framer-motion'
@@ -169,6 +169,7 @@ function PopularLoanTypes() {
 
 export function AddLoanPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [saved, setSaved] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -220,6 +221,11 @@ export function AddLoanPage() {
         notes: extraNotes || undefined,
         status: 'ACTIVE',
       } as any)
+      // Same-tab lists (Loans page, Dashboard) refetch immediately — no manual
+      // reload needed. Cross-tab/device updates arrive via the SSE stream.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.loans.list() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.loans.eligibility() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() })
       setSaved(true)
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } }

@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { LoansService } from './loans.service'
+import { CreateLoanDto, UpdateLoanDto } from './dto/loan.dto'
 
 @ApiTags('Loans')
 @ApiBearerAuth()
@@ -16,7 +17,7 @@ export class LoansController {
   @Get(':id') findOne(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.findOne(uid, id) }
   @Get(':id/documents') getDocuments(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.getDocuments(uid, id) }
   @Get(':id/transactions') getTransactions(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.getTransactions(uid, id) }
-  @Post() create(@CurrentUser('id') uid: string, @Body() dto: any) { return this.service.create(uid, dto) }
-  @Patch(':id') update(@CurrentUser('id') uid: string, @Param('id') id: string, @Body() dto: any) { return this.service.update(uid, id, dto) }
+  @Post() create(@CurrentUser('id') uid: string, @Body() dto: CreateLoanDto) { return this.service.create(uid, dto) }
+  @Patch(':id') update(@CurrentUser('id') uid: string, @Param('id') id: string, @Body() dto: UpdateLoanDto) { return this.service.update(uid, id, dto) }
   @Delete(':id') @HttpCode(HttpStatus.OK) remove(@CurrentUser('id') uid: string, @Param('id') id: string) { return this.service.remove(uid, id) }
 }

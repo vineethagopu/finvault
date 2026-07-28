@@ -11,7 +11,7 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { policyService } from '@/services/policyService'
 import { beneficiaryService } from '@/services/beneficiaryService'
 import { queryKeys } from '@/services/queryKeys'
@@ -138,6 +138,7 @@ export function AddBeneficiaryPage() {
   const navigate = useNavigate()
   const [saved, setSaved] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const queryClient = useQueryClient()
 
   const { data: policies = [] } = useQuery({
     queryKey: queryKeys.policies.list(),
@@ -170,6 +171,10 @@ export function AddBeneficiaryPage() {
         address: [data.address, data.city, data.pinCode].filter(Boolean).join(', ') || undefined,
         policyId: data.policyId || undefined,
       } as any)
+      // Same-tab lists (Beneficiaries page) refetch immediately — no manual
+      // reload needed. Cross-tab/device updates arrive via the SSE stream.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.beneficiaries.list() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.beneficiaries.summary() })
       setSaved(true)
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } }

@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, BarChart3, CalendarDays, Check, CheckCircle2, Coins, FileText, Home,
   Info, Landmark, LayoutGrid, Lightbulb, LineChart, PiggyBank,
@@ -13,6 +14,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { investmentService } from '@/services/investmentService'
+import { queryKeys } from '@/services/queryKeys'
 import toast from 'react-hot-toast'
 
 const INVESTMENT_TYPES = [
@@ -141,13 +143,19 @@ function Tips() {
 
 export function AddInvestmentPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const queryClient = useQueryClient()
+  // Arrived from the "Invest Online" catalog tiles? Pre-select the matching type
+  // so the form doesn't land blank after the user already picked a product.
+  const preset = (location.state as { presetInvestmentType?: string } | null)?.presetInvestmentType
   const [saved, setSaved] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      investmentType: '', modeOfInvestment: '', assetClass: '',
+      investmentType: preset && INVESTMENT_TYPES.some(t => t.value === preset) ? preset : '',
+      modeOfInvestment: '', assetClass: '',
       riskLevel: '', investmentGoal: '', lockInPeriod: '',
     },
   })
@@ -180,6 +188,12 @@ export function AddInvestmentPage() {
         status: 'ACTIVE',
         notes: extraNotes || undefined,
       } as any)
+      // Same-tab lists (Investments page, Dashboard) refetch immediately — no
+      // manual reload needed. Cross-tab/device updates arrive via the SSE stream.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.investments.list() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.investments.overview() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.investments.performance() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() })
       setSaved(true)
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } }

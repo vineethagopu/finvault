@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -9,12 +9,14 @@ import {
   WalletCards, Lightbulb, BadgeIndianRupee, ClipboardList, HeartPulse, Home,
   IdCard, MapPin, FileHeart, CircleDollarSign
 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { INSURANCE_TYPES } from '@/constants'
 import { policyService } from '@/services/policyService'
 import { documentService } from '@/services/documentService'
+import { queryKeys } from '@/services/queryKeys'
 import { formatCurrency } from '@/utils/formatters'
 import toast from 'react-hot-toast'
 
@@ -462,6 +464,11 @@ function FooterNav({ back, next }: { back: () => void; next: () => void }) {
 
 export function AddPolicyPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const queryClient = useQueryClient()
+  // Arrived from the "Invest Online" catalog tiles? Pre-select the matching type
+  // so the form doesn't land blank after the user already picked a product.
+  const preset = (location.state as { presetInsuranceType?: string } | null)?.presetInsuranceType
   const [step, setStep] = useState(1)
   const [nominees, setNominees] = useState<NomineeForm[]>([])
   const [files, setFiles] = useState<Record<string, File | null>>({})
@@ -470,7 +477,10 @@ export function AddPolicyPage() {
 
   const { register, handleSubmit, trigger, getValues, formState: { errors } } = useForm<PolicyFormData>({
     resolver: zodResolver(policySchema),
-    defaultValues: { premiumFrequency: 'ANNUAL', status: 'ACTIVE' },
+    defaultValues: {
+      premiumFrequency: 'ANNUAL', status: 'ACTIVE',
+      insuranceType: preset && INSURANCE_TYPES.some(t => t.value === preset) ? preset : undefined,
+    },
   })
 
   const validateStep1AndGo = async () => {
@@ -514,6 +524,12 @@ export function AddPolicyPage() {
         }).catch(() => null)
       )
       await Promise.all(uploads)
+
+      // Same-tab lists (Insurance, My Plan, Dashboard) refetch immediately — no
+      // manual reload needed. Cross-tab/device updates arrive via the SSE stream.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.policies.list() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.policies.lifeActive() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() })
 
       toast.success('Policy saved successfully!')
       navigate(`/app/insurance/${policy.id}`)

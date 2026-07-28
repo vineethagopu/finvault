@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Plus, Shield, Search, Filter, MoreVertical, ChevronRight, Bell, ShoppingBag, Download, Eye, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
@@ -9,12 +9,14 @@ import { Input } from '@/components/ui/Input'
 import { StatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
+import { ConfirmModal } from '@/components/ui/Modal'
 import { formatCurrency, formatDate, formatDateTime, daysFromNow } from '@/utils/formatters'
-import { INSURANCE_TYPES } from '@/constants'
+import { INSURANCE_TYPES, API_BASE_URL } from '@/constants'
 import { policyService } from '@/services/policyService'
 import { queryKeys } from '@/services/queryKeys'
 import { useAuthStore } from '@/store/authStore'
 import type { Policy } from '@/types'
+import toast from 'react-hot-toast'
 
 const TABS = ['My Policies', 'Policy Applications', 'Riders', 'Claims']
 
@@ -24,13 +26,49 @@ export function InsurancePage() {
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Policy | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
 
   const { data: policies = [], isLoading } = useQuery({
     queryKey: queryKeys.policies.list(),
     queryFn: async () => (await policyService.getAll()) ?? [],
   })
+
+  const downloadPolicyDocument = async (policy: Policy) => {
+    if (!policy._count?.policyDocuments) {
+      toast.error('No document uploaded for this policy yet')
+      return
+    }
+    try {
+      const links = await policyService.getDocuments<{ document: { id: string } }[]>(policy.id)
+      const docId = links[0]?.document?.id
+      if (!docId) { toast.error('No document uploaded for this policy yet'); return }
+      window.open(`${API_BASE_URL}/documents/${docId}/download`, '_blank')
+    } catch {
+      toast.error('Failed to load policy document')
+    }
+  }
+
+  const confirmDeletePolicy = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await policyService.delete(deleteTarget.id)
+      // Same-tab list refetches immediately; the backend's `policy.changed` SSE
+      // event keeps any other open tab/device in sync without a reload.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.policies.list() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all() })
+      toast.success('Policy deleted')
+      setDeleteTarget(null)
+    } catch {
+      toast.error('Failed to delete policy')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const filtered = policies.filter(p => {
     const matchSearch = !search || p.policyName.toLowerCase().includes(search.toLowerCase()) || p.provider.toLowerCase().includes(search.toLowerCase())
@@ -236,17 +274,29 @@ export function InsurancePage() {
                             </button>
                             {menuOpen === policy.id && (
                               <div className="absolute right-0 top-8 bg-white border border-slate-100 rounded-xl shadow-lg py-1 z-10 w-44" onClick={e => e.stopPropagation()}>
-                                <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                <button
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                                  onClick={() => { setMenuOpen(null); navigate(`/app/insurance/${policy.id}`) }}
+                                >
                                   <Eye size={13} /> View Details
                                 </button>
-                                <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                <button
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                                  onClick={() => { setMenuOpen(null); downloadPolicyDocument(policy) }}
+                                >
                                   <Download size={13} /> Download Policy
                                 </button>
-                                <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                <button
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                                  onClick={() => { setMenuOpen(null); toast('Reminders are coming soon') }}
+                                >
                                   <Bell size={13} /> Set Reminder
                                 </button>
                                 <div className="border-t border-slate-100 mt-1">
-                                  <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
+                                  <button
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                                    onClick={() => { setMenuOpen(null); setDeleteTarget(policy) }}
+                                  >
                                     <Trash2 size={13} /> Delete
                                   </button>
                                 </div>
@@ -267,12 +317,12 @@ export function InsurancePage() {
             <div>
               <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Quick Actions</h4>
               {[
-                { icon: ShoppingBag, label: 'Buy New Policy', desc: 'Explore and buy new insurance' },
-                { icon: Plus, label: 'Add My Policy Manually', desc: 'Add a policy you already have' },
-                { icon: Shield, label: 'Renew Policy', desc: 'Renew your existing policy' },
-                { icon: Download, label: 'Download Policy Schedule', desc: 'Get your policy document' },
-              ].map(({ icon: Icon, label, desc }) => (
-                <button key={label} className="w-full flex items-start gap-3 p-3 hover:bg-slate-50 rounded-xl text-left transition-colors mb-1">
+                { icon: ShoppingBag, label: 'Buy New Policy', desc: 'Explore and buy new insurance', onClick: () => navigate('/app/invest-online') },
+                { icon: Plus, label: 'Add My Policy Manually', desc: 'Add a policy you already have', onClick: () => navigate('/app/insurance/add') },
+                { icon: Shield, label: 'Renew Policy', desc: 'Renew your existing policy', onClick: () => toast('Policy renewal is coming soon') },
+                { icon: Download, label: 'Download Policy Schedule', desc: 'Get your policy document', onClick: () => toast('Select a policy from the list to download its schedule') },
+              ].map(({ icon: Icon, label, desc, onClick }) => (
+                <button key={label} onClick={onClick} className="w-full flex items-start gap-3 p-3 hover:bg-slate-50 rounded-xl text-left transition-colors mb-1">
                   <Icon size={15} className="text-green-600 mt-0.5 shrink-0" />
                   <div>
                     <p className="text-xs font-semibold text-slate-700">{label}</p>
@@ -285,12 +335,12 @@ export function InsurancePage() {
             <div className="border-t border-slate-100 pt-3">
               <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Need Help?</h4>
               <p className="text-xs text-slate-500 mb-2">Our support team is here to help you with your insurance needs.</p>
-              <Button variant="outline" size="sm" className="w-full text-xs">Contact Support</Button>
+              <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => toast.success('Connecting you to support')}>Contact Support</Button>
             </div>
             <div className="border-t border-slate-100 pt-3">
               <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Useful Information</h4>
               {['How to File a Claim', 'Understand Your Policy', 'Tax Benefits on Insurance', 'Insurance Glossary'].map(item => (
-                <button key={item} className="w-full flex items-center justify-between py-2 text-xs text-slate-600 hover:text-green-600 transition-colors">
+                <button key={item} onClick={() => toast(`"${item}" article is coming soon`)} className="w-full flex items-center justify-between py-2 text-xs text-slate-600 hover:text-green-600 transition-colors">
                   {item} <ChevronRight size={12} />
                 </button>
               ))}
@@ -302,9 +352,24 @@ export function InsurancePage() {
           <div className="flex items-center gap-2 text-xs text-green-700">
             <Shield size={12} /> Stay protected! Ensure timely premium payments to keep your policies active.
           </div>
-          <Button variant="ghost" size="sm" className="text-xs" leftIcon={<Bell size={12} />}>Set Payment Reminder</Button>
+          <Button
+            variant="ghost" size="sm" className="text-xs" leftIcon={<Bell size={12} />}
+            onClick={() => toast('Reminders are coming soon')}
+          >
+            Set Payment Reminder
+          </Button>
         </div>
       </Card>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeletePolicy}
+        loading={deleting}
+        title="Delete this policy?"
+        description={deleteTarget ? `"${deleteTarget.policyName}" and its linked nominees will be permanently removed. This can't be undone.` : undefined}
+        confirmText="Delete"
+      />
     </div>
   )
 }

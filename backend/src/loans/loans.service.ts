@@ -1,12 +1,20 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { EventsService } from '../events/events.service'
 
 @Injectable()
 export class LoansService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventsService,
+  ) {}
 
   async findAll(userId: string, query: any) {
-    const { page = 1, limit = 20, loanType, status } = query
+    // Query params always arrive as strings; Prisma's `take`/`skip` require real
+    // numbers, so coerce explicitly instead of trusting the destructured defaults.
+    const page = Number(query.page) > 0 ? Number(query.page) : 1
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 20
+    const { loanType, status } = query
     const where: any = { userId }
     if (loanType) where.loanType = loanType
     if (status) where.status = status
@@ -32,27 +40,51 @@ export class LoansService {
   }
 
   async create(userId: string, dto: any) {
+    const disbursedDate = new Date(dto.disbursedDate)
+    if (isNaN(disbursedDate.getTime())) {
+      throw new BadRequestException('disbursedDate is required and must be a valid date')
+    }
+
+    // maturityDate is required by the schema, but callers (or a caller bug)
+    // may omit it or send an invalid value — derive it from disbursedDate +
+    // tenure (months) instead of letting an invalid Date reach Prisma and
+    // crash with an unhandled 500.
+    let maturityDate = dto.maturityDate ? new Date(dto.maturityDate) : null
+    if (!maturityDate || isNaN(maturityDate.getTime())) {
+      const tenureMonths = Number(dto.tenure) > 0 ? Number(dto.tenure) : 12
+      maturityDate = new Date(disbursedDate)
+      maturityDate.setMonth(maturityDate.getMonth() + tenureMonths)
+    }
+
+    const nextEmiDate = dto.nextEmiDate ? new Date(dto.nextEmiDate) : undefined
+    if (nextEmiDate && isNaN(nextEmiDate.getTime())) {
+      throw new BadRequestException('nextEmiDate must be a valid date')
+    }
+
     const loan = await this.prisma.loan.create({
       data: {
         ...dto,
         userId,
-        disbursedDate: new Date(dto.disbursedDate),
-        maturityDate: new Date(dto.maturityDate),
-        nextEmiDate: dto.nextEmiDate ? new Date(dto.nextEmiDate) : undefined,
+        disbursedDate,
+        maturityDate,
+        nextEmiDate,
       },
     })
+    this.events.emit(userId, { type: 'loan.changed' })
     return { data: loan, message: 'Loan added' }
   }
 
   async update(userId: string, id: string, dto: any) {
     await this.assertOwnership(userId, id)
     const loan = await this.prisma.loan.update({ where: { id }, data: dto })
+    this.events.emit(userId, { type: 'loan.changed' })
     return { data: loan, message: 'Loan updated' }
   }
 
   async remove(userId: string, id: string) {
     await this.assertOwnership(userId, id)
     await this.prisma.loan.delete({ where: { id } })
+    this.events.emit(userId, { type: 'loan.changed' })
     return { message: 'Loan removed' }
   }
 

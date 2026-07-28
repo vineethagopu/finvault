@@ -10,7 +10,11 @@ export class NotificationsService {
   ) {}
 
   async findAll(userId: string, query: any) {
-    const { page = 1, limit = 30, category, unreadOnly } = query
+    // Query params always arrive as strings; Prisma's `take`/`skip` require real
+    // numbers, so coerce explicitly instead of trusting the destructured defaults.
+    const page = Number(query.page) > 0 ? Number(query.page) : 1
+    const limit = Number(query.limit) > 0 ? Number(query.limit) : 30
+    const { category, unreadOnly } = query
     const where: any = { userId }
     if (category) where.category = category
     if (unreadOnly === 'true') where.isRead = false

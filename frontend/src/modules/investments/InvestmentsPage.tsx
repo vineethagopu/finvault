@@ -104,7 +104,13 @@ function QuickSummary({ overview }: { overview: Overview }) {
   )
 }
 
-function QuickActions() {
+function QuickActions({ navigate }: { navigate: (path: string) => void }) {
+  const handlers: Record<string, () => void> = {
+    'Invest Now': () => navigate('/app/invest-online'),
+    'SIP Calculator': () => toast('SIP Calculator is coming soon'),
+    'Goal Planner': () => toast('Goal Planner is coming soon'),
+    'Switch / Redeem': () => toast('Switch / Redeem is coming soon'),
+  }
   return (
     <Card padding="sm" className="rounded-lg">
       <h3 className="mb-2 text-sm font-extrabold text-[#11194f]">Quick Actions</h3>
@@ -112,7 +118,7 @@ function QuickActions() {
         {QUICK_ACTIONS.map(item => {
           const Icon = item.icon
           return (
-            <button key={item.label} className="flex w-full items-center gap-3 py-3 text-left">
+            <button key={item.label} onClick={handlers[item.label]} className="flex w-full items-center gap-3 py-3 text-left">
               <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${item.bg}`}>
                 <Icon size={15} className={item.color} />
               </div>
@@ -139,7 +145,7 @@ function Tips() {
       <p className="mb-4 text-[12px] font-bold leading-relaxed text-[#253261]">
         Stay invested for the long term to maximize your returns.
       </p>
-      <button className="flex items-center gap-2 text-[12px] font-extrabold text-blue-600">
+      <button onClick={() => toast('Investment insights are coming soon')} className="flex items-center gap-2 text-[12px] font-extrabold text-blue-600">
         Explore investment insights <ArrowRight size={14} />
       </button>
     </Card>
@@ -192,7 +198,7 @@ export function InvestmentsPage() {
                 <div>
                   <div className="flex items-center gap-3">
                     <h2 className="text-base font-extrabold text-[#11194f]">Investments Overview</h2>
-                    <button className="flex items-center gap-1 text-[12px] font-bold text-blue-600"><Eye size={14} /> View details</button>
+                    <button onClick={() => toast('Detailed portfolio view is coming soon')} className="flex items-center gap-1 text-[12px] font-bold text-blue-600"><Eye size={14} /> View details</button>
                   </div>
                   <p className="mt-1 text-[12px] font-medium text-[#34406f]">Your consolidated investment summary</p>
                 </div>
@@ -210,7 +216,7 @@ export function InvestmentsPage() {
               <Card padding="sm" className="rounded-lg">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-extrabold text-[#11194f]">Asset Allocation</h2>
-                  <button className="text-[11px] font-bold text-blue-600">View breakdown</button>
+                  <button onClick={() => toast('Full breakdown view is coming soon')} className="text-[11px] font-bold text-blue-600">View breakdown</button>
                 </div>
                 {overview.allocation.length === 0 ? (
                   <p className="py-8 text-center text-[12px] text-slate-400">No investments yet — add one to see your allocation.</p>
@@ -343,7 +349,7 @@ export function InvestmentsPage() {
 
           <aside className="space-y-3">
             <QuickSummary overview={overview} />
-            <QuickActions />
+            <QuickActions navigate={navigate} />
             <Tips />
           </aside>
         </div>

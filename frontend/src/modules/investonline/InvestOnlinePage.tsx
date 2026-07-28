@@ -1,4 +1,5 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -10,6 +11,39 @@ import {
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import { catalogService } from '@/services/catalogService'
 import { queryKeys } from '@/services/queryKeys'
+
+// Sections that map to the "Add Investment" flow; everything else routes to "Add Policy".
+const INVESTMENT_SECTIONS = new Set(['Buy Investments Online', 'Investment Plans'])
+
+// Best-effort keyword → enum mapping so the destination form opens pre-selected
+// for the product the user tapped, instead of landing on a blank "pick a type" form.
+const INVESTMENT_TYPE_KEYWORDS: [RegExp, string][] = [
+  [/stock|equity/i, 'STOCKS'],
+  [/mutual fund/i, 'MUTUAL_FUND'],
+  [/gold/i, 'GOLD_ETF'],
+  [/ulip/i, 'ULIP'],
+  [/fixed deposit|smart deposit/i, 'FIXED_DEPOSIT'],
+  [/retirement|pension/i, 'NPS'],
+  [/tax saving|child saving|ppf/i, 'PPF'],
+  [/bond|guaranteed return/i, 'BONDS'],
+]
+const INSURANCE_TYPE_KEYWORDS: [RegExp, string][] = [
+  [/health|cancer|opd|arogya/i, 'HEALTH'],
+  [/wheeler|vehicle|car/i, 'VEHICLE'],
+  [/travel/i, 'TRAVEL'],
+  [/home/i, 'HOME'],
+  [/term|life/i, 'LIFE'],
+]
+
+function resolveDestination(section: string, tileTitle: string): { path: string; state: Record<string, string> } {
+  const isInvestment = INVESTMENT_SECTIONS.has(section)
+  const keywords = isInvestment ? INVESTMENT_TYPE_KEYWORDS : INSURANCE_TYPE_KEYWORDS
+  const match = keywords.find(([re]) => re.test(tileTitle))
+  const presetType = match?.[1] ?? 'OTHER'
+  return isInvestment
+    ? { path: '/app/investments/add', state: { presetInvestmentType: presetType, presetLabel: tileTitle } }
+    : { path: '/app/insurance/add', state: { presetInsuranceType: presetType, presetLabel: tileTitle } }
+}
 
 const ICONS: Record<string, React.ElementType> = {
   Gift, RefreshCw, UserRound, Briefcase, Globe, Home,
@@ -31,6 +65,7 @@ interface CatalogTile { id: string; title: string; iconKey: string }
 interface CatalogSection { section: string; tiles: CatalogTile[] }
 
 export function InvestOnlinePage() {
+  const navigate = useNavigate()
   const { data: sections = [], isLoading } = useQuery({
     queryKey: queryKeys.catalog.list(),
     queryFn: async () => (await catalogService.getAll<CatalogSection[]>()) ?? [],
@@ -55,9 +90,11 @@ export function InvestOnlinePage() {
             <div className={`grid ${style.cols} gap-4`}>
               {section.tiles.map((tile) => {
                 const Icon = ICONS[tile.iconKey] ?? Shield
+                const { path, state } = resolveDestination(section.section, tile.title)
                 return (
                   <button
                     key={tile.id}
+                    onClick={() => navigate(path, { state })}
                     className={`flex items-center gap-3 p-4 rounded-xl border border-slate-100 ${style.tint} text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}
                   >
                     <div className={`w-10 h-10 rounded-xl ${style.chipBg} flex items-center justify-center shrink-0`}>

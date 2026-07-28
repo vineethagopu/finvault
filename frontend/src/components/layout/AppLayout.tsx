@@ -39,7 +39,7 @@ export function AppLayout() {
       </AnimatePresence>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar onMenuClick={() => setMobileSidebarOpen(true)} alertCount={3} />
+        <Topbar onMenuClick={() => setMobileSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto">
           <div className="animate-fade-in">
             <Outlet />
