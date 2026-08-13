@@ -1,0 +1,5 @@
+# Cloudflare Pages SPA fallback.
+# React Router owns the routes, so every path that is not a real static asset
+# must serve index.html — otherwise a hard refresh or a shared deep link
+# (e.g. /login, /app/dashboard) returns a 404 from the CDN.
+/*  /index.html  200

@@ -6,7 +6,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger'
 import type { Response } from 'express'
-import * as fs from 'fs'
 import { DocumentsService } from './documents.service'
 import { UploadDocumentDto, DocumentFiltersDto } from './dto/document.dto'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -40,8 +39,7 @@ export class DocumentsController {
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const doc = await this.service.serveFile(uid, id)
-    const stream = fs.createReadStream(doc.s3Key)
+    const { doc, stream } = await this.service.downloadFile(uid, id)
     res.set({
       'Content-Type': doc.mimeType,
       'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.name)}"`,

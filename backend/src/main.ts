@@ -19,8 +19,23 @@ async function bootstrap() {
 
   app.use(cookieParser())
 
+  // Hosted behind a TLS-terminating proxy (Render, NGINX). Without this Express
+  // sees plain HTTP and refuses to set `Secure` cookies, and req.ip is the
+  // proxy's address rather than the client's.
+  if (process.env.TRUST_PROXY !== 'false') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1)
+  }
+
+  // Comma-separated so a split deployment can allow the production SPA origin
+  // alongside preview/branch URLs. Credentials are on, so '*' is not valid —
+  // each allowed origin must be listed explicitly.
+  const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],

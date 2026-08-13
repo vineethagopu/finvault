@@ -8,9 +8,9 @@ import type { Request, Response } from 'express'
 import * as fsSync from 'fs'
 import { Throttle } from '@nestjs/throttler'
 import * as path from 'path'
-import * as fs from 'fs/promises'
 import * as crypto from 'crypto'
 import { AuthService } from './auth.service'
+import { StorageService } from '../storage/storage.service'
 import {
   LoginDto, RegisterDto, RegisterFamilyDto, SendOtpDto, VerifyOtpDto, ChangePasswordDto,
   UpdateProfileDto, UpdateNotificationPreferenceDto,
@@ -19,13 +19,26 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Public } from '../common/decorators/public.decorator'
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads'
 const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+/**
+ * When the SPA is served from a different site than the API — e.g. the app on
+ * Cloudflare Pages and this API on Render — the browser treats every request as
+ * cross-site and drops `SameSite=Lax` cookies, which breaks login, every
+ * authenticated call and the SSE stream. `SameSite=None` is required there, and
+ * browsers only accept it together with `Secure`.
+ *
+ * Set COOKIE_SAMESITE=none for that split deployment. Same-origin setups (local
+ * dev, the Docker Compose stack behind one NGINX) keep the stricter `lax`
+ * default, which is better CSRF protection.
+ */
+const SAME_SITE = (process.env.COOKIE_SAMESITE || 'lax').toLowerCase() as 'lax' | 'strict' | 'none'
+const COOKIE_SECURE = SAME_SITE === 'none' || process.env.NODE_ENV === 'production'
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  secure: COOKIE_SECURE,
+  sameSite: SAME_SITE,
   path: '/',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
 }
@@ -39,7 +52,10 @@ const ACCESS_COOKIE_OPTIONS = {
 @Controller('auth')
 @UseGuards(JwtAuthGuard)
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private storage: StorageService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -160,10 +176,7 @@ export class AuthController {
     }
     const ext = path.extname(file.originalname).toLowerCase().replace(/[^a-z0-9.]/g, '')
     const safeFilename = `${crypto.randomUUID()}${ext}`
-    const destDir = path.join(UPLOAD_DIR, 'avatars')
-    const localPath = path.join(destDir, safeFilename)
-    await fs.mkdir(destDir, { recursive: true })
-    await fs.writeFile(localPath, file.buffer)
+    await this.storage.put('avatars', safeFilename, file.buffer, file.mimetype)
     return this.authService.updateAvatar(userId, safeFilename)
   }
 
@@ -171,11 +184,21 @@ export class AuthController {
   @ApiOperation({ summary: 'Serve an uploaded avatar' })
   async getAvatar(@Param('filename') filename: string, @Res({ passthrough: true }) res: Response) {
     const safeFilename = path.basename(filename)
-    const localPath = path.join(UPLOAD_DIR, 'avatars', safeFilename)
     const ext = path.extname(safeFilename).toLowerCase()
     const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
     res.set({ 'Content-Type': mimeType })
-    return new StreamableFile(fsSync.createReadStream(localPath))
+
+    // Only the filename is stored on the user row, not which backend held it.
+    // Read from the active backend, then fall back to local disk so avatars
+    // uploaded before object storage was switched on still resolve.
+    const { key, bucket } = this.storage.resolve('avatars', safeFilename)
+    try {
+      return new StreamableFile(await this.storage.getStream(key, bucket))
+    } catch {
+      return new StreamableFile(
+        fsSync.createReadStream(this.storage.localPathFor('avatars', safeFilename)),
+      )
+    }
   }
 
   @Get('sessions')

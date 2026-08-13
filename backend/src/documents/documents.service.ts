@@ -1,12 +1,11 @@
 import {
-  Injectable, NotFoundException, ForbiddenException,
-  BadRequestException, Logger,
+  Injectable, NotFoundException, ForbiddenException, BadRequestException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { EventsService } from '../events/events.service'
+import { StorageService } from '../storage/storage.service'
 import { UploadDocumentDto, DocumentFiltersDto } from './dto/document.dto'
 import * as path from 'path'
-import * as fs from 'fs/promises'
 import * as crypto from 'crypto'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -16,15 +15,13 @@ const ALLOWED_MIME_TYPES = [
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads'
 
 @Injectable()
 export class DocumentsService {
-  private readonly logger = new Logger(DocumentsService.name)
-
   constructor(
     private prisma: PrismaService,
     private events: EventsService,
+    private storage: StorageService,
   ) {}
 
   async findAll(userId: string, filters: DocumentFiltersDto) {
@@ -92,11 +89,7 @@ export class DocumentsService {
     // Sanitize filename — never use original client filename as path
     const ext = path.extname(file.originalname).toLowerCase().replace(/[^a-z0-9.]/g, '')
     const safeFilename = `${crypto.randomUUID()}${ext}`
-    const destDir = path.join(UPLOAD_DIR, userId)
-    const localPath = path.join(destDir, safeFilename)
-
-    await fs.mkdir(destDir, { recursive: true })
-    await fs.writeFile(localPath, file.buffer)
+    const stored = await this.storage.put(userId, safeFilename, file.buffer, file.mimetype)
 
     const tags = dto.tags ? dto.tags.split(',').map(t => t.trim()).filter(Boolean) : []
 
@@ -109,8 +102,11 @@ export class DocumentsService {
         fileName: safeFilename,
         mimeType: file.mimetype,
         size: file.size,
-        s3Key: localPath,      // local path; swap with S3 key in production
-        s3Bucket: 'local',     // 'local' sentinel for non-S3 environments
+        // Object key + bucket when S3/R2 is configured; local path + the
+        // 'local' sentinel otherwise. Recorded per-row so files written under
+        // one backend stay readable after switching to the other.
+        s3Key: stored.key,
+        s3Bucket: stored.bucket,
         isEncrypted: false,
         scanStatus: 'CLEAN',
         ...(dto.policyId && {
@@ -144,17 +140,21 @@ export class DocumentsService {
     return doc
   }
 
+  /**
+   * Resolve a document to its metadata plus a readable stream, reading from
+   * whichever backend the row was written to.
+   */
+  async downloadFile(userId: string, id: string) {
+    const doc = await this.serveFile(userId, id)
+    const stream = await this.storage.getStream(doc.s3Key, doc.s3Bucket)
+    return { doc, stream }
+  }
+
   async remove(userId: string, id: string) {
     const doc = await this.prisma.document.findFirst({ where: { id, userId } })
     if (!doc) throw new ForbiddenException('Access denied')
 
-    if (doc.s3Bucket === 'local') {
-      try {
-        await fs.unlink(doc.s3Key)
-      } catch {
-        this.logger.warn(`Could not delete local file at ${doc.s3Key}`)
-      }
-    }
+    await this.storage.delete(doc.s3Key, doc.s3Bucket)
 
     await this.prisma.document.delete({ where: { id } })
     this.events.emit(userId, { type: 'document.changed' })

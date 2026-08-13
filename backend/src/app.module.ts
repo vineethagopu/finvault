@@ -17,6 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module'
 import { ReportsModule } from './reports/reports.module'
 import { CatalogModule } from './catalog/catalog.module'
 import { EventsModule } from './events/events.module'
+import { StorageModule } from './storage/storage.module'
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard'
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor'
@@ -40,6 +41,7 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
     ReportsModule,
     CatalogModule,
     EventsModule,
+    StorageModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
